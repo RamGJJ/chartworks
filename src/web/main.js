@@ -62,6 +62,7 @@ async function openFiles(fileList) {
 			const doc = await pdfjs.getDocument({ data: original.slice(), useSystemFonts: true }).promise;
 			const pages = await extractPages(doc);
 			const analysis = analyze(pages);
+
 			const tab = [];
 			for (const p of pages) {
 				const page = await doc.getPage(p.index + 1);
@@ -298,18 +299,27 @@ async function renderPage() {
 
 	const plan = currentPlan(doc);
 	const here = plan.edits.filter((edit) => edit.pageIndex === state.pageIndex);
-	const manual = here.filter((edit) => edit.manual && edit.changed);
-	if (manual.length) wrap.append(ghostLayer(manual, cssViewport, previewFont(doc)));
+	const tabPage = doc.tab.find((p) => p.index === state.pageIndex);
+	const frets = describeShift(tabPage?.frets ?? [], state.fretShift, { maxFret: state.maxFret });
+
+	// What the saved PDF will carry, drawn where it will sit, so the sheet on
+	// screen is the sheet that comes out.
+	const ghosts = [
+		...(state.showBoxes ? here.filter((edit) => edit.changed) : []),
+	];
+	// A shift that cannot be made is not made at all, so nothing is previewed.
+	const willShift = state.fretShift !== 0 && currentShift(doc).feasible;
+	const movingFrets = state.showFrets && willShift ? frets : [];
+	if (ghosts.length || movingFrets.length) {
+		wrap.append(ghostLayer(ghosts, movingFrets, cssViewport, previewFont(doc)));
+	}
 
 	if (state.showBoxes) {
 		for (const edit of here) wrap.append(markFor(doc, edit, cssViewport));
 	}
 
 	if (state.showFrets) {
-		const tabPage = doc.tab.find((p) => p.index === state.pageIndex);
-		for (const fret of describeShift(tabPage?.frets ?? [], state.fretShift, { maxFret: state.maxFret })) {
-			wrap.append(fretMark(fret, cssViewport));
-		}
+		for (const fret of frets) wrap.append(fretMark(fret, cssViewport));
 	}
 
 	const notes = doc.analysis.notes.filter((note) => note.pageIndex === state.pageIndex);
@@ -358,15 +368,71 @@ function previewFont(doc) {
 
 // Shows a hand-marked chord the way the saved PDF will carry it: the patch over
 // what was printed, and the new symbol at the size and baseline we will use.
-function ghostLayer(edits, viewport, font) {
+function rect(svg, x, y, width, height, fill) {
+	const el = document.createElementNS(SVG_NS, 'rect');
+	el.setAttribute('x', x);
+	el.setAttribute('y', y);
+	el.setAttribute('width', Math.max(width, 0));
+	el.setAttribute('height', Math.max(height, 0));
+	el.setAttribute('fill', fill);
+	svg.append(el);
+	return el;
+}
+
+// Finale writes a fret as line, patch, digits. The preview repeats that so a
+// number that grew does not sit across the string line, and one that shrank
+// does not leave a gap in it.
+function fretGhost(svg, fret, viewport, family) {
+	const text = String(fret.to);
+	const unit = fret.width / fret.digits;
+	const span = text.length * unit;
+	const centre = fret.x + fret.width / 2;
+	const left = centre - span / 2;
+
+	const clearFrom = Math.min(left, fret.x) - 0.3;
+	const clearTo = Math.max(left + span, fret.x + fret.width) + 0.3;
+
+	const [x0, top] = viewport.convertToViewportPoint(clearFrom, fret.patchY + fret.patchH);
+	const [x1, bottom] = viewport.convertToViewportPoint(clearTo, fret.patchY);
+	const [, lineY] = viewport.convertToViewportPoint(clearFrom, fret.lineY);
+	const [textLeft] = viewport.convertToViewportPoint(left, fret.lineY);
+	const [textRight] = viewport.convertToViewportPoint(left + span, fret.lineY);
+
+	const thickness = Math.max((fret.lineWidth || 0.5) * state.zoom, 0.6);
+	rect(svg, x0, Math.min(top, bottom), x1 - x0, Math.abs(bottom - top), '#fff');
+	rect(svg, x0, lineY - thickness / 2, x1 - x0, thickness, '#000');
+	rect(svg, textLeft, Math.min(top, bottom), textRight - textLeft, Math.abs(bottom - top), '#fff');
+
+	const [, baseline] = viewport.convertToViewportPoint(fret.x, fret.baseline);
+	const cell = (textRight - textLeft) / text.length;
+	for (let i = 0; i < text.length; i++) {
+		const glyph = document.createElementNS(SVG_NS, 'text');
+		glyph.setAttribute('x', textLeft + cell * (i + 0.5));
+		glyph.setAttribute('text-anchor', 'middle');
+		glyph.setAttribute('y', baseline);
+		glyph.setAttribute('font-size', fret.size * state.zoom);
+		glyph.setAttribute('font-family', family);
+		glyph.setAttribute('fill', '#000');
+		glyph.textContent = text[i];
+		svg.append(glyph);
+	}
+}
+
+function ghostLayer(edits, frets, viewport, font) {
 	const svg = document.createElementNS(SVG_NS, 'svg');
 	svg.setAttribute('class', 'ghost-layer');
 	const serif = font.startsWith('times');
 	const family = serif ? '"Times New Roman", Times, serif' : 'Helvetica, Arial, sans-serif';
 
+	for (const fret of frets) fretGhost(svg, fret, viewport, family);
+
 	for (const edit of edits) {
+		// Same patch the writer clears, descender room included.
 		const [left, top] = viewport.convertToViewportPoint(edit.x, edit.top);
-		const [right, bottom] = viewport.convertToViewportPoint(edit.right, edit.bottom);
+		const [right, bottom] = viewport.convertToViewportPoint(
+			edit.right,
+			Math.min(edit.bottom, edit.y) - edit.size * 0.25,
+		);
 		const [textX, baseline] = viewport.convertToViewportPoint(edit.x, edit.y);
 
 		const patch = document.createElementNS(SVG_NS, 'rect');
