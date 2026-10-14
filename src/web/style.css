@@ -328,3 +328,16 @@ button[aria-pressed="true"] {
 
 .chord-input input.wide { width: 170px; }
 .chord-input input.pt { width: 58px; }
+
+.row input[type="number"] {
+	width: 74px;
+	font: inherit;
+	color: var(--text);
+	background: var(--panel-2);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 6px 8px;
+}
+
+.keyline.warn { color: var(--warn); }
+.keyline.none { opacity: 0.7; }

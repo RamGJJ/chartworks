@@ -77,7 +77,25 @@
 				</section>
 
 				<section class="block">
-					<h2>4. 저장</h2>
+					<h2>4. 탭 프렛</h2>
+					<div class="stepper">
+						<button id="fretDown" type="button" aria-label="프렛 내리기">−</button>
+						<div class="amount">
+							<strong id="frets">0</strong>
+							<span>반음</span>
+						</div>
+						<button id="fretUp" type="button" aria-label="프렛 올리기">+</button>
+					</div>
+					<input id="fretSlider" type="range" min="-11" max="11" step="1" value="0" />
+					<label class="row">
+						<span>최대 프렛</span>
+						<input id="maxFret" type="number" min="12" max="30" step="1" value="24" />
+					</label>
+					<p id="tabline" class="keyline">탭 보표가 있으면 프렛 범위를 알려줍니다.</p>
+				</section>
+
+				<section class="block">
+					<h2>5. 저장</h2>
 					<p id="outline" class="outline">저장 폴더를 고르면 여러 장을 한 번에 내보냅니다.</p>
 					<div class="actions">
 						<button id="chooseDir" type="button">저장 폴더 고르기</button>

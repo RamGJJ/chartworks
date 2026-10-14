@@ -14,6 +14,7 @@ import {
 } from '../core/pipeline.js';
 import koreanFontUrl from '../../assets/fonts/NanumGothic-Regular.ttf?url';
 import { parseChord } from '../core/chord.js';
+import { planFretShift, readTabPage, summarise } from '../core/tab.js';
 import { applyPlan } from '../core/render.js';
 import { SHARP_NAMES, FLAT_NAMES } from '../core/chord.js';
 
@@ -26,6 +27,8 @@ const state = {
 	activeId: null,
 	pageIndex: 0,
 	semitones: 0,
+	fretShift: 0,
+	maxFret: 24,
 	style: 'auto',
 	glyph: 'ascii',
 	font: 'auto',
@@ -56,13 +59,20 @@ async function openFiles(fileList) {
 		try {
 			const original = new Uint8Array(await file.arrayBuffer());
 			const doc = await pdfjs.getDocument({ data: original.slice(), useSystemFonts: true }).promise;
-			const analysis = analyze(await extractPages(doc));
+			const pages = await extractPages(doc);
+			const analysis = analyze(pages);
+			const tab = [];
+			for (const p of pages) {
+				const page = await doc.getPage(p.index + 1);
+				tab.push({ index: p.index, ...(await readTabPage(page, p.items, pdfjs.OPS)) });
+			}
 			state.docs.push({
 				id: `${file.name}:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`,
 				name: file.name,
 				original,
 				doc,
 				analysis,
+				tab,
 				skip: new Set(),
 			});
 		} catch (err) {
@@ -76,6 +86,7 @@ async function openFiles(fileList) {
 	}
 	renderFileList();
 	syncKeyLine();
+	syncTabLine();
 	await renderPage();
 	$('save').disabled = !state.docs.length;
 	setStatus(state.docs.length ? `${state.docs.length}개 악보 준비됨` : '', 'ok');
@@ -110,6 +121,7 @@ function renderFileList() {
 			$('save').disabled = !state.docs.length;
 			renderFileList();
 			syncKeyLine();
+			syncTabLine();
 			renderPage();
 		});
 
@@ -119,6 +131,7 @@ function renderFileList() {
 			state.pageIndex = 0;
 			renderFileList();
 			syncKeyLine();
+			syncTabLine();
 			renderPage();
 		});
 		ul.append(li);
@@ -132,6 +145,53 @@ function currentPlan(doc) {
 		accidentalGlyph: state.glyph,
 		skip: doc.skip,
 	});
+}
+
+function currentShift(doc) {
+	return planFretShift(doc.tab, state.fretShift, { maxFret: state.maxFret });
+}
+
+function syncTabLine() {
+	const el = $('tabline');
+	const doc = active();
+	el.className = 'keyline';
+
+	if (!doc) {
+		el.textContent = '탭 보표가 있으면 프렛 범위를 알려줍니다.';
+		return;
+	}
+
+	const frets = doc.tab.flatMap((page) => page.frets);
+	const shape = summarise(frets);
+	if (!shape) {
+		el.className = 'keyline none';
+		el.textContent = '이 악보에는 탭 보표가 없습니다.';
+		return;
+	}
+
+	const plan = currentShift(doc);
+	const head = `탭 ${shape.count}개 · 프렛 ${shape.min}~${shape.max}`;
+
+	if (plan.alreadyShifted) {
+		el.className = 'keyline warn';
+		el.textContent = `${head} · 이미 한 번 옮긴 악보라 다시 옮길 수 없습니다. 원본에서 다시 하세요.`;
+		return;
+	}
+	if (!state.fretShift) {
+		el.textContent = `${head} · 열린 줄 ${shape.open}개`;
+		return;
+	}
+	if (!plan.feasible) {
+		const low = plan.blocked.filter((m) => m.to < 0).length;
+		const high = plan.blocked.length - low;
+		const why = low && high
+			? `${low}개는 0 미만, ${high}개는 ${state.maxFret}번 프렛을 넘음`
+			: low ? `${low}개가 0 미만` : `${high}개가 ${state.maxFret}번 프렛을 넘음`;
+		el.className = 'keyline warn';
+		el.textContent = `${head} · 옮길 수 없습니다 — ${why}`;
+		return;
+	}
+	el.innerHTML = `${head} <span class="arrow">→</span> <b>${shape.min + state.fretShift}~${shape.max + state.fretShift}</b> · ${plan.moves.length}개 이동`;
 }
 
 function syncKeyLine() {
@@ -738,7 +798,12 @@ function defaultNoteSize() {
 
 async function convert(doc) {
 	const plan = currentPlan(doc);
-	return applyPlan(doc.original.slice(), plan, { fontChoice: state.font, loadFontBytes });
+	const shift = currentShift(doc);
+	return applyPlan(doc.original.slice(), plan, {
+		fontChoice: state.font,
+		loadFontBytes,
+		fretMoves: state.fretShift ? shift.moves : [],
+	});
 }
 
 function outputName(doc) {
@@ -746,7 +811,10 @@ function outputName(doc) {
 	const sign = state.semitones > 0 ? `+${state.semitones}` : `${state.semitones}`;
 	const plan = currentPlan(doc);
 	const to = targetKeyLabel(doc.analysis, state.semitones, plan.style);
-	return `${base} [${to ?? sign}].pdf`;
+	const tag = state.semitones || !state.fretShift ? (to ?? sign) : null;
+	const fret = state.fretShift ? `탭${state.fretShift > 0 ? '+' : ''}${state.fretShift}` : null;
+	const marks = [tag, fret].filter(Boolean).join(' ');
+	return marks ? `${base} [${marks}].pdf` : `${base} [메모].pdf`;
 }
 
 function download(bytes, name) {
@@ -765,7 +833,13 @@ async function saveAll() {
 	let skipped = 0;
 
 	for (const doc of state.docs) {
-		if (!doc.analysis.chordCount && !doc.analysis.notes.length) {
+		const shift = currentShift(doc);
+		if (state.fretShift && !shift.feasible && shift.total) {
+			setStatus(`${doc.name} — 탭을 ${state.fretShift > 0 ? '+' : ''}${state.fretShift}만큼 옮길 수 없어 건너뜀`, 'err');
+			skipped++;
+			continue;
+		}
+		if (!doc.analysis.chordCount && !doc.analysis.notes.length && !shift.moves.length) {
 			skipped++;
 			continue;
 		}
@@ -858,6 +932,22 @@ function wire() {
 		$('textHint').hidden = !state.texting;
 		renderPage();
 	};
+
+	const setFretShift = (value) => {
+		state.fretShift = Math.max(-11, Math.min(11, Math.round(value)));
+		$('frets').textContent = state.fretShift > 0 ? `+${state.fretShift}` : `${state.fretShift}`;
+		$('fretSlider').value = String(state.fretShift);
+		syncTabLine();
+	};
+	$('fretUp').addEventListener('click', () => setFretShift(state.fretShift + 1));
+	$('fretDown').addEventListener('click', () => setFretShift(state.fretShift - 1));
+	$('fretSlider').addEventListener('input', (e) => setFretShift(Number(e.target.value)));
+	$('maxFret').addEventListener('change', (e) => {
+		state.maxFret = Math.max(12, Math.min(30, Number(e.target.value) || 24));
+		e.target.value = String(state.maxFret);
+		syncTabLine();
+	});
+	setFretShift(0);
 
 	$('pickRegion').addEventListener('click', () => setMode(state.picking ? null : 'pick'));
 	$('addText').addEventListener('click', () => setMode(state.texting ? null : 'text'));
