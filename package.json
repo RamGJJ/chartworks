@@ -1,9 +1,9 @@
 {
-  "name": "tabpro",
+  "name": "chartworks",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "PDF guitar tab/score tools. First tool: chord symbol transposer.",
+  "description": "Tools for band sheet music PDFs: transpose chords, shift tab frets, write notes.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

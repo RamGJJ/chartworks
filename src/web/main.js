@@ -710,7 +710,7 @@ let previewFaceLoaded = false;
 function loadPreviewFace() {
 	if (previewFaceLoaded || !window.FontFace) return;
 	previewFaceLoaded = true;
-	const face = new FontFace('tabProNote', `url(${koreanFontUrl})`);
+	const face = new FontFace('chartworksNote', `url(${koreanFontUrl})`);
 	face.load().then((loaded) => document.fonts.add(loaded)).catch(() => {});
 }
 
@@ -727,7 +727,7 @@ function notesLayer(doc, notes, viewport) {
 		hit.setAttribute('class', 'note-hit');
 
 		const label = document.createElementNS(SVG_NS, 'text');
-		label.setAttribute('font-family', 'tabProNote, "Malgun Gothic", sans-serif');
+		label.setAttribute('font-family', 'chartworksNote, "Malgun Gothic", sans-serif');
 		label.setAttribute('fill', '#000');
 		label.textContent = note.text;
 
