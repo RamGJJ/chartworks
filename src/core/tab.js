@@ -360,6 +360,16 @@ export function summarise(frets) {
 	};
 }
 
+// Every fret with where it would land, in range or not. The preview needs the
+// ones that do not fit as much as the ones that do — they are the reason a
+// shift is refused, and the reader wants to see where they are.
+export function describeShift(frets, semitones, { maxFret = DEFAULT_MAX_FRET } = {}) {
+	return frets.map((fret) => {
+		const to = fret.value + semitones;
+		return { ...fret, from: fret.value, to, ok: to >= 0 && to <= maxFret };
+	});
+}
+
 export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET } = {}) {
 	const moves = [];
 	const blocked = [];
@@ -377,11 +387,10 @@ export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET } =
 	}
 
 	for (const page of pages) {
-		for (const fret of page.frets) {
-			const to = fret.value + semitones;
-			const move = { ...fret, pageIndex: page.index, from: fret.value, to };
-			if (to < 0 || to > maxFret) blocked.push(move);
-			else moves.push(move);
+		for (const move of describeShift(page.frets, semitones, { maxFret })) {
+			const placed = { ...move, pageIndex: page.index };
+			if (placed.ok) moves.push(placed);
+			else blocked.push(placed);
 		}
 	}
 

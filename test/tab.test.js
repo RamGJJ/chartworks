@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { groupIntoStaves, planFretShift, readFrets, summarise } from '../src/core/tab.js';
+import { describeShift, groupIntoStaves, planFretShift, readFrets, summarise } from '../src/core/tab.js';
 
 const rule = (y, x0 = 50, x1 = 500, width = 0.5) => ({ y, x0, x1, width });
 
@@ -97,4 +97,14 @@ test('summarises what is on the staff', () => {
 	assert.equal(summarise([]), null);
 	const s = summarise([{ value: 0 }, { value: 3 }, { value: 12 }, { value: 0 }]);
 	assert.deepEqual([s.count, s.min, s.max, s.open], [4, 0, 12, 2]);
+});
+
+test('describes where every fret lands, in range or not', () => {
+	const frets = [{ value: 0 }, { value: 5 }, { value: 23 }];
+	const down = describeShift(frets, -1, { maxFret: 24 });
+	assert.deepEqual(down.map((f) => [f.from, f.to, f.ok]), [[0, -1, false], [5, 4, true], [23, 22, true]]);
+
+	const up = describeShift(frets, 2, { maxFret: 24 });
+	assert.deepEqual(up.map((f) => f.ok), [true, true, false]);
+	assert.equal(up[2].to, 25);
 });

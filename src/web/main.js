@@ -14,7 +14,7 @@ import {
 } from '../core/pipeline.js';
 import koreanFontUrl from '../../assets/fonts/NanumGothic-Regular.ttf?url';
 import { parseChord } from '../core/chord.js';
-import { planFretShift, readTabPage, summarise } from '../core/tab.js';
+import { describeShift, planFretShift, readTabPage, summarise } from '../core/tab.js';
 import { applyPlan } from '../core/render.js';
 import { SHARP_NAMES, FLAT_NAMES } from '../core/chord.js';
 
@@ -34,6 +34,7 @@ const state = {
 	font: 'auto',
 	zoom: 1.25,
 	showBoxes: true,
+	showFrets: true,
 	picking: false,
 	texting: false,
 	painted: null,
@@ -304,6 +305,13 @@ async function renderPage() {
 		for (const edit of here) wrap.append(markFor(doc, edit, cssViewport));
 	}
 
+	if (state.showFrets) {
+		const tabPage = doc.tab.find((p) => p.index === state.pageIndex);
+		for (const fret of describeShift(tabPage?.frets ?? [], state.fretShift, { maxFret: state.maxFret })) {
+			wrap.append(fretMark(fret, cssViewport));
+		}
+	}
+
 	const notes = doc.analysis.notes.filter((note) => note.pageIndex === state.pageIndex);
 	if (notes.length) wrap.append(notesLayer(doc, notes, cssViewport));
 
@@ -313,6 +321,29 @@ async function renderPage() {
 	stage.innerHTML = '';
 	stage.append(wrap);
 	sizeNoteHits(wrap);
+}
+
+function fretMark(fret, viewport) {
+	const [left, top] = viewport.convertToViewportPoint(fret.x, fret.patchY + fret.patchH);
+	const [right, bottom] = viewport.convertToViewportPoint(fret.x + fret.width, fret.patchY);
+
+	const el = document.createElement('div');
+	const moving = state.fretShift !== 0;
+	el.className = `fret${moving ? (fret.ok ? ' moved' : ' stuck') : ''}`;
+	el.style.left = `${Math.min(left, right) - 1}px`;
+	el.style.top = `${Math.min(top, bottom) - 1}px`;
+	el.style.width = `${Math.abs(right - left) + 2}px`;
+	el.style.height = `${Math.abs(bottom - top) + 2}px`;
+
+	const tip = document.createElement('span');
+	tip.className = 'tip';
+	tip.textContent = !moving
+		? `${fret.string + 1}번 줄 · ${fret.from}프렛`
+		: fret.ok
+			? `${fret.from} → ${fret.to}프렛`
+			: `${fret.from} → ${fret.to} · 칠 수 없는 자리`;
+	el.append(tip);
+	return el;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -914,6 +945,10 @@ function wire() {
 		state.showBoxes = e.target.checked;
 		renderPage();
 	});
+	$('showFrets').addEventListener('change', (e) => {
+		state.showFrets = e.target.checked;
+		renderPage();
+	});
 
 	$('prev').addEventListener('click', () => {
 		state.pageIndex--;
@@ -938,6 +973,7 @@ function wire() {
 		$('frets').textContent = state.fretShift > 0 ? `+${state.fretShift}` : `${state.fretShift}`;
 		$('fretSlider').value = String(state.fretShift);
 		syncTabLine();
+		renderPage();
 	};
 	$('fretUp').addEventListener('click', () => setFretShift(state.fretShift + 1));
 	$('fretDown').addEventListener('click', () => setFretShift(state.fretShift - 1));
@@ -946,6 +982,7 @@ function wire() {
 		state.maxFret = Math.max(12, Math.min(30, Number(e.target.value) || 24));
 		e.target.value = String(state.maxFret);
 		syncTabLine();
+		renderPage();
 	});
 	setFretShift(0);
 
