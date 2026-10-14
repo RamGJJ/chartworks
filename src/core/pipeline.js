@@ -43,11 +43,52 @@ export function analyze(pages) {
 
 	return {
 		pages: analyzed,
+		notes: [],
 		chordFonts,
 		key,
 		keyLabel: key ? keyName(key.pc, key.minor) : null,
 		chordCount: all.length,
 	};
+}
+
+let noteCounter = 0;
+
+// Free text written onto the sheet: a reminder, a part name, a cue. Unlike a
+// chord it is never transposed, and it does not cover what is underneath.
+export function addNote(analysis, { pageIndex, text, x, baseline, size }) {
+	const body = String(text ?? '').trim();
+	if (!body || !analysis.pages[pageIndex]) return null;
+
+	const note = {
+		id: `note-${++noteCounter}`,
+		pageIndex,
+		text: body,
+		x,
+		baseline,
+		size,
+	};
+	analysis.notes.push(note);
+	return note;
+}
+
+export function updateNote(analysis, id, patch) {
+	const note = analysis.notes.find((one) => one.id === id);
+	if (!note) return null;
+	if (patch.text !== undefined) {
+		const body = String(patch.text).trim();
+		if (!body) return null;
+		note.text = body;
+	}
+	for (const key of ['x', 'baseline', 'size', 'pageIndex']) {
+		if (patch[key] !== undefined) note[key] = patch[key];
+	}
+	return note;
+}
+
+export function removeNote(analysis, id) {
+	const before = analysis.notes.length;
+	analysis.notes = analysis.notes.filter((one) => one.id !== id);
+	return analysis.notes.length !== before;
 }
 
 export function recomputeKey(analysis) {
@@ -173,5 +214,5 @@ export function buildPlan(analysis, { semitones, style = 'auto', accidentalGlyph
 		}
 	}
 
-	return { edits, style: resolved, semitones };
+	return { edits, notes: analysis.notes ?? [], style: resolved, semitones };
 }

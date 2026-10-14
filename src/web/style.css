@@ -301,3 +301,30 @@ button[aria-pressed="true"] {
 
 .chord-input input.bad { border-color: var(--warn); }
 .chord-input button { padding: 5px 9px; }
+
+.notes-layer {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.notes-layer .note { pointer-events: auto; cursor: grab; }
+.notes-layer .note:active { cursor: grabbing; }
+
+.note-hit {
+	fill: transparent;
+	stroke: transparent;
+	stroke-width: 1;
+	rx: 3;
+}
+
+.notes-layer .note:hover .note-hit {
+	fill: rgba(106, 168, 255, 0.16);
+	stroke: var(--accent);
+}
+
+.chord-input input.wide { width: 170px; }
+.chord-input input.pt { width: 58px; }

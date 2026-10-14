@@ -3,12 +3,16 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 import {
 	addManualChord,
+	addNote,
 	analyze,
 	buildPlan,
 	extractPages,
 	removeManualChord,
+	removeNote,
 	targetKeyLabel,
+	updateNote,
 } from '../core/pipeline.js';
+import koreanFontUrl from '../../assets/fonts/NanumGothic-Regular.ttf?url';
 import { parseChord } from '../core/chord.js';
 import { applyPlan } from '../core/render.js';
 import { SHARP_NAMES, FLAT_NAMES } from '../core/chord.js';
@@ -28,6 +32,7 @@ const state = {
 	zoom: 1.25,
 	showBoxes: true,
 	picking: false,
+	texting: false,
 	painted: null,
 	renderTask: null,
 	outDir: null,
@@ -223,7 +228,7 @@ async function renderPage() {
 	if (!canvas || token !== state.renderToken) return;
 
 	const wrap = document.createElement('div');
-	wrap.className = `page-wrap${state.picking ? ' picking' : ''}`;
+	wrap.className = `page-wrap${state.picking || state.texting ? ' picking' : ''}`;
 	wrap.style.width = canvas.style.width;
 	wrap.style.height = canvas.style.height;
 	wrap.append(canvas);
@@ -239,10 +244,15 @@ async function renderPage() {
 		for (const edit of here) wrap.append(markFor(doc, edit, cssViewport));
 	}
 
+	const notes = doc.analysis.notes.filter((note) => note.pageIndex === state.pageIndex);
+	if (notes.length) wrap.append(notesLayer(doc, notes, cssViewport));
+
 	if (state.picking) attachPicker(wrap, doc, page, cssViewport);
+	else if (state.texting) attachTextPlacer(wrap, doc, cssViewport);
 
 	stage.innerHTML = '';
 	stage.append(wrap);
+	sizeNoteHits(wrap);
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -510,9 +520,225 @@ function askForChord(wrap, css, initial, onDone) {
 	input.select();
 }
 
+let koreanFont = null;
+
+async function loadFontBytes() {
+	if (!koreanFont) {
+		const res = await fetch(koreanFontUrl);
+		koreanFont = new Uint8Array(await res.arrayBuffer());
+	}
+	return koreanFont;
+}
+
+function attachTextPlacer(wrap, doc, viewport) {
+	wrap.addEventListener('mousedown', (down) => {
+		if (down.button !== 0 || down.target.closest('.notes-layer')) return;
+		down.preventDefault();
+
+		const box = wrap.getBoundingClientRect();
+		const css = { left: down.clientX - box.left, top: down.clientY - box.top };
+		const [x, baseline] = viewport.convertToPdfPoint(css.left, css.top);
+
+		askForText(wrap, css, '', (text, size) => {
+			addNote(doc.analysis, { pageIndex: state.pageIndex, text, x, baseline, size });
+			renderPage();
+		});
+	});
+}
+
+let previewFaceLoaded = false;
+
+// Draw notes with the very font the writer embeds, so what is on screen is what
+// comes out of the PDF.
+function loadPreviewFace() {
+	if (previewFaceLoaded || !window.FontFace) return;
+	previewFaceLoaded = true;
+	const face = new FontFace('tabProNote', `url(${koreanFontUrl})`);
+	face.load().then((loaded) => document.fonts.add(loaded)).catch(() => {});
+}
+
+function notesLayer(doc, notes, viewport) {
+	loadPreviewFace();
+	const svg = document.createElementNS(SVG_NS, 'svg');
+	svg.setAttribute('class', 'notes-layer');
+
+	for (const note of notes) {
+		const group = document.createElementNS(SVG_NS, 'g');
+		group.setAttribute('class', 'note');
+
+		const hit = document.createElementNS(SVG_NS, 'rect');
+		hit.setAttribute('class', 'note-hit');
+
+		const label = document.createElementNS(SVG_NS, 'text');
+		label.setAttribute('font-family', 'tabProNote, "Malgun Gothic", sans-serif');
+		label.setAttribute('fill', '#000');
+		label.textContent = note.text;
+
+		group.append(hit, label);
+		place(group, note, viewport);
+		attachNoteDrag(group, doc, note, viewport);
+		svg.append(group);
+	}
+	return svg;
+}
+
+function place(group, note, viewport) {
+	const [x, y] = viewport.convertToViewportPoint(note.x, note.baseline);
+	const label = group.querySelector('text');
+	label.setAttribute('x', x);
+	label.setAttribute('y', y);
+	label.setAttribute('font-size', note.size * state.zoom);
+	group.dataset.x = x;
+	group.dataset.y = y;
+}
+
+// getBBox only answers once the element is on the page.
+function sizeNoteHits(wrap) {
+	for (const group of wrap.querySelectorAll('.notes-layer .note')) {
+		const label = group.querySelector('text');
+		const hit = group.querySelector('.note-hit');
+		try {
+			const box = label.getBBox();
+			hit.setAttribute('x', box.x - 3);
+			hit.setAttribute('y', box.y - 2);
+			hit.setAttribute('width', box.width + 6);
+			hit.setAttribute('height', box.height + 4);
+		} catch {
+			/* not laid out yet */
+		}
+	}
+}
+
+function attachNoteDrag(group, doc, note, viewport) {
+	let moved = false;
+	group.addEventListener('mousedown', (down) => {
+		if (down.button !== 0) return;
+		down.preventDefault();
+		down.stopPropagation();
+		moved = false;
+
+		const start = { x: down.clientX, y: down.clientY };
+		const origin = { x: note.x, baseline: note.baseline };
+
+		const drag = (move) => {
+			const dx = (move.clientX - start.x) / state.zoom;
+			const dy = (move.clientY - start.y) / state.zoom;
+			if (Math.abs(move.clientX - start.x) > 2 || Math.abs(move.clientY - start.y) > 2) moved = true;
+			updateNote(doc.analysis, note.id, { x: origin.x + dx, baseline: origin.baseline - dy });
+			place(group, note, viewport);
+			sizeNoteHits(group.closest('.page-wrap'));
+		};
+
+		const stop = () => {
+			window.removeEventListener('mousemove', drag);
+			window.removeEventListener('mouseup', stop);
+			if (!moved) editNote(doc, note, group);
+		};
+
+		window.addEventListener('mousemove', drag);
+		window.addEventListener('mouseup', stop);
+	});
+}
+
+function editNote(doc, note, anchor) {
+	const wrap = anchor.closest('.page-wrap');
+	const box = wrap.getBoundingClientRect();
+	const spot = anchor.getBoundingClientRect();
+	const css = { left: spot.left - box.left, top: spot.bottom - box.top };
+
+	askForText(
+		wrap,
+		css,
+		note.text,
+		(text, size) => {
+			updateNote(doc.analysis, note.id, { text, size });
+			renderPage();
+		},
+		() => {
+			removeNote(doc.analysis, note.id);
+			renderPage();
+		},
+		note.size,
+	);
+}
+
+function askForText(wrap, css, initial, onDone, onDelete = null, size = null) {
+	wrap.querySelector('.chord-input')?.remove();
+
+	const panel = document.createElement('div');
+	panel.className = 'chord-input';
+	panel.style.left = `${css.left}px`;
+	panel.style.top = `${css.top + 6}px`;
+
+	const input = document.createElement('input');
+	input.type = 'text';
+	input.className = 'wide';
+	input.placeholder = '예: 2번만 반복';
+	input.value = initial;
+
+	const points = document.createElement('input');
+	points.type = 'number';
+	points.className = 'pt';
+	points.min = '4';
+	points.max = '48';
+	points.step = '0.5';
+	points.title = '글자 크기 (pt)';
+	points.value = String(Math.round((size ?? defaultNoteSize()) * 10) / 10);
+
+	const ok = document.createElement('button');
+	ok.type = 'button';
+	ok.textContent = initial ? '고치기' : '넣기';
+
+	const close = () => panel.remove();
+	const submit = () => {
+		const text = input.value.trim();
+		if (!text) {
+			input.classList.add('bad');
+			return;
+		}
+		close();
+		onDone(text, Number(points.value) || defaultNoteSize());
+	};
+
+	input.addEventListener('input', () => input.classList.remove('bad'));
+	input.addEventListener('keydown', (e) => {
+		if (e.key === 'Enter') submit();
+		if (e.key === 'Escape') close();
+	});
+	ok.addEventListener('click', submit);
+
+	panel.append(input, points, ok);
+
+	if (onDelete) {
+		const remove = document.createElement('button');
+		remove.type = 'button';
+		remove.textContent = '지우기';
+		remove.addEventListener('click', () => {
+			close();
+			onDelete();
+		});
+		panel.append(remove);
+	} else {
+		const cancel = document.createElement('button');
+		cancel.type = 'button';
+		cancel.textContent = '취소';
+		cancel.addEventListener('click', close);
+		panel.append(cancel);
+	}
+
+	wrap.append(panel);
+	input.focus();
+	input.select();
+}
+
+function defaultNoteSize() {
+	const doc = active();
+	return doc ? chordSizeFor(doc) : 9;
+}
+
 async function convert(doc) {
 	const plan = currentPlan(doc);
-	return applyPlan(doc.original.slice(), plan, { fontChoice: state.font });
+	return applyPlan(doc.original.slice(), plan, { fontChoice: state.font, loadFontBytes });
 }
 
 function outputName(doc) {
@@ -539,7 +765,7 @@ async function saveAll() {
 	let skipped = 0;
 
 	for (const doc of state.docs) {
-		if (!doc.analysis.chordCount) {
+		if (!doc.analysis.chordCount && !doc.analysis.notes.length) {
 			skipped++;
 			continue;
 		}
@@ -563,7 +789,7 @@ async function saveAll() {
 	}
 
 	$('save').disabled = false;
-	setStatus(`${done}개 저장 완료${skipped ? `, ${skipped}개는 코드가 없어 건너뜀` : ''}`, 'ok');
+	setStatus(`${done}개 저장 완료${skipped ? `, ${skipped}개는 고칠 것이 없어 건너뜀` : ''}`, 'ok');
 }
 
 function setSemitones(value) {
@@ -623,12 +849,18 @@ function wire() {
 		state.pageIndex++;
 		renderPage();
 	});
-	$('pickRegion').addEventListener('click', (e) => {
-		state.picking = !state.picking;
-		e.target.setAttribute('aria-pressed', String(state.picking));
+	const setMode = (mode) => {
+		state.picking = mode === 'pick';
+		state.texting = mode === 'text';
+		$('pickRegion').setAttribute('aria-pressed', String(state.picking));
+		$('addText').setAttribute('aria-pressed', String(state.texting));
 		$('pickHint').hidden = !state.picking;
+		$('textHint').hidden = !state.texting;
 		renderPage();
-	});
+	};
+
+	$('pickRegion').addEventListener('click', () => setMode(state.picking ? null : 'pick'));
+	$('addText').addEventListener('click', () => setMode(state.texting ? null : 'text'));
 
 	$('zoomIn').addEventListener('click', () => {
 		state.zoom = Math.min(3, state.zoom + 0.25);

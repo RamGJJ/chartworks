@@ -42,8 +42,34 @@ function pickFontByWidth(fonts, edits) {
 	return best;
 }
 
+const NEEDS_FULL_FONT = /[^ -~]/;
+
+// The standard fonts stop at Latin-1, so a Korean note needs a real font file.
+// Loading it costs a couple of megabytes, so only reach for it when a note
+// actually asks for something the built-in fonts cannot write.
+async function unicodeFont(pdf, notes, loadFontBytes) {
+	if (!loadFontBytes) return null;
+	if (!notes.some((note) => NEEDS_FULL_FONT.test(note.text))) return null;
+
+	const bytes = await loadFontBytes();
+	if (!bytes) return null;
+
+	const { default: fontkit } = await import('@pdf-lib/fontkit');
+	pdf.registerFontkit(fontkit);
+
+	// Subsetting drops glyphs from this font — Latin ones too — so the whole
+	// file goes in. It adds a few hundred kilobytes, and only to sheets that
+	// carry a note the built-in fonts cannot write.
+	return pdf.embedFont(bytes, { subset: false });
+}
+
 export async function applyPlan(originalBytes, plan, options = {}) {
-	const { fontChoice = 'auto', eraseColor = rgb(1, 1, 1), debug = false } = options;
+	const {
+		fontChoice = 'auto',
+		eraseColor = rgb(1, 1, 1),
+		debug = false,
+		loadFontBytes = null,
+	} = options;
 
 	const pdf = await PDFDocument.load(originalBytes, {
 		updateMetadata: false,
@@ -105,9 +131,37 @@ export async function applyPlan(originalBytes, plan, options = {}) {
 		written++;
 	}
 
+	const notes = plan.notes ?? [];
+	const wide = await unicodeFont(pdf, notes, loadFontBytes);
+
+	for (const note of notes) {
+		const page = pages[note.pageIndex];
+		if (!page) continue;
+
+		if (!wide && NEEDS_FULL_FONT.test(note.text)) {
+			skipped.push({ ...note, reason: 'no-unicode-font' });
+			continue;
+		}
+		if (page.getRotation().angle % 360 !== 0) {
+			skipped.push({ ...note, reason: 'rotated-page' });
+			continue;
+		}
+
+		const box = page.getMediaBox();
+		page.drawText(note.text, {
+			x: note.x + box.x,
+			y: note.baseline + box.y,
+			size: note.size,
+			font: wide ?? font,
+			color: rgb(0, 0, 0),
+		});
+		written++;
+	}
+
 	return {
 		bytes: await pdf.save({ useObjectStreams: false }),
 		written,
+		notes: notes.length,
 		skipped,
 		font: chosen,
 	};
