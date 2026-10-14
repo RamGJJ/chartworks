@@ -12,7 +12,11 @@ const PAD_Y = 0.6;
 const NON_LATIN1 = /[^ -ÿ]/;
 
 function pickFontByWidth(fonts, edits) {
-	const samples = edits.filter((e) => e.sourceText.length <= 4 && e.right > e.x).slice(0, 60);
+	// A hand-marked chord's width is the box someone dragged, which says nothing
+	// about the type on the page.
+	const samples = edits
+		.filter((e) => !e.manual && e.sourceText.length <= 4 && e.right > e.x)
+		.slice(0, 60);
 	if (!samples.length) return 'times-bold';
 
 	let best = 'times-bold';
