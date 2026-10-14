@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>tabPro — 악보 키 변경</title>
+		<link rel="stylesheet" href="/src/web/style.css" />
+	</head>
+	<body>
+		<header class="topbar">
+			<h1>tabPro<span>악보 키 변경</span></h1>
+			<p class="hint">PDF 악보의 <strong>코드 심볼만</strong> 옮겨 적습니다. 음표·탭 숫자는 그대로 둡니다.</p>
+		</header>
+
+		<main>
+			<aside class="panel">
+				<section class="block">
+					<h2>1. 악보 열기</h2>
+					<div id="drop" class="drop">
+						<input id="picker" type="file" accept="application/pdf" multiple hidden />
+						<button id="pick" class="primary" type="button">PDF 고르기</button>
+						<p>또는 이곳에 끌어다 놓기</p>
+					</div>
+					<ul id="files" class="files"></ul>
+				</section>
+
+				<section class="block">
+					<h2>2. 얼마나 옮길지</h2>
+					<div class="stepper">
+						<button id="down" type="button" aria-label="반음 내리기">−</button>
+						<div class="amount">
+							<strong id="semis">0</strong>
+							<span>반음</span>
+						</div>
+						<button id="up" type="button" aria-label="반음 올리기">+</button>
+					</div>
+					<input id="slider" type="range" min="-11" max="11" step="1" value="0" />
+
+					<label class="row">
+						<span>목표 키</span>
+						<select id="targetKey"></select>
+					</label>
+					<p id="keyline" class="keyline">악보를 열면 현재 키를 추정합니다.</p>
+				</section>
+
+				<section class="block">
+					<h2>3. 표기 방법</h2>
+					<label class="row">
+						<span>올림/내림</span>
+						<select id="style">
+							<option value="auto">자동 (조표에 맞춤)</option>
+							<option value="sharp">샵 (#) 고정</option>
+							<option value="flat">플랫 (b) 고정</option>
+						</select>
+					</label>
+					<label class="row">
+						<span>기호</span>
+						<select id="glyph">
+							<option value="ascii"># / b</option>
+							<option value="unicode">♯ / ♭</option>
+						</select>
+					</label>
+					<label class="row">
+						<span>글꼴</span>
+						<select id="font">
+							<option value="auto">자동 (원본 폭에 맞춤)</option>
+							<option value="helvetica">Helvetica</option>
+							<option value="helvetica-bold">Helvetica Bold</option>
+							<option value="times">Times</option>
+							<option value="times-bold">Times Bold</option>
+						</select>
+					</label>
+					<label class="check">
+						<input id="showBoxes" type="checkbox" checked />
+						<span>미리보기에서 바뀐 코드 표시</span>
+					</label>
+				</section>
+
+				<section class="block">
+					<h2>4. 저장</h2>
+					<p id="outline" class="outline">저장 폴더를 고르면 여러 장을 한 번에 내보냅니다.</p>
+					<div class="actions">
+						<button id="chooseDir" type="button">저장 폴더 고르기</button>
+						<button id="save" class="primary" type="button" disabled>변환해서 저장</button>
+					</div>
+					<p id="status" class="status"></p>
+				</section>
+			</aside>
+
+			<section class="viewer">
+				<div class="viewer-bar">
+					<button id="prev" type="button">◀</button>
+					<span id="pageLabel">— / —</span>
+					<button id="next" type="button">▶</button>
+					<span class="spacer"></span>
+					<button id="zoomOut" type="button">축소</button>
+					<button id="zoomIn" type="button">확대</button>
+				</div>
+				<div id="stage" class="stage">
+					<p class="empty">왼쪽에서 PDF를 열어 주세요.</p>
+				</div>
+			</section>
+		</main>
+
+		<script type="module" src="/src/web/main.js"></script>
+	</body>
+</html>

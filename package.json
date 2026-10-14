@@ -1,0 +1,21 @@
+{
+  "name": "tabpro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PDF guitar tab/score tools. First tool: chord symbol transposer.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/*.test.js",
+    "transpose": "node scripts/batch.mjs"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "4.10.38"
+  },
+  "devDependencies": {
+    "vite": "5.4.11"
+  }
+}
