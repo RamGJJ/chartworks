@@ -12,7 +12,7 @@ import {
 } from '../src/core/chord.js';
 
 test('reads plain triads', () => {
-	assert.deepEqual(parseChord('C'), { root: 'C', quality: '', bass: null, source: 'C' });
+	assert.deepEqual(parseChord('C'), { root: 'C', quality: '', bass: null, bassOnly: false, source: 'C' });
 	assert.equal(parseChord('Gm7').root, 'G');
 	assert.equal(parseChord('Gm7').quality, 'm7');
 	assert.equal(parseChord('F#m7-5').quality, 'm7-5');
@@ -74,4 +74,22 @@ test('finds the key by harmonic fit, not by counting', () => {
 	const flatSong = ['F', 'Bb', 'C', 'Dm', 'F', 'Bb', 'C', 'F'].map(parseChord);
 	const flatKey = detectKey(flatSong);
 	assert.equal(keyName(flatKey.pc, flatKey.minor), 'F');
+});
+
+test('reads a bare slash as a bass-only marking', () => {
+	const bass = parseChord('/E');
+	assert.equal(bass.root, null);
+	assert.equal(bass.bass, 'E');
+	assert.equal(bass.bassOnly, true);
+
+	assert.equal(transposeText('/E', 1, { style: 'sharp' }), '/F');
+	assert.equal(transposeText('/Bb', 2, { style: 'flat' }), '/C');
+	assert.equal(parseChord('/'), null);
+	assert.equal(parseChord('/H'), null);
+	assert.equal(parseChord('/ Music by'), null);
+});
+
+test('a bass-only marking does not vote on the key', () => {
+	const withBass = ['C', 'F', 'G', 'C', '/E', '/E', '/E', '/E', '/E'].map(parseChord);
+	assert.equal(keyName(detectKey(withBass).pc, detectKey(withBass).minor), 'C');
 });

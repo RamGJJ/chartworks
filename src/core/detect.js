@@ -78,17 +78,25 @@ function clusterRuns(items) {
 	};
 
 	for (const item of sorted) {
+		// Take the nearest run that will have it, not the first one found: a
+		// chord's accidental can overlap a notehead drawn in the same music
+		// font, and handing it to the notehead breaks the chord in two.
 		let target = null;
+		let best = Infinity;
 		const home = bucketOf(item.y);
-		for (let k = home - 1; k <= home + 1 && !target; k++) {
+		for (let k = home - 1; k <= home + 1; k++) {
 			for (const run of open.get(k) || []) {
 				if (item.font !== run.font && !canJoinForeign(run, item)) continue;
 				const scale = Math.max(run.size, item.size);
-				if (Math.abs(item.y - run.y) > scale * BASELINE_TOLERANCE) continue;
+				const drop = Math.abs(item.y - run.y);
+				if (drop > scale * BASELINE_TOLERANCE) continue;
 				const gap = item.x - run.right;
 				if (gap < -scale * 0.3 || gap > scale * GAP_TOLERANCE) continue;
-				target = run;
-				break;
+				const score = Math.abs(gap) + drop;
+				if (score < best) {
+					best = score;
+					target = run;
+				}
 			}
 		}
 
@@ -159,6 +167,29 @@ function chordFontsOf(tokens) {
 	return fonts;
 }
 
+const MAX_CHORDS_PER_RUN = 3;
+
+// Two chord symbols printed back to back ("A7sus4A7") land in one run because
+// there is no gap between them. Split at glyph boundaries, but only when every
+// piece reads as a chord — otherwise a run of prose would shatter into letters.
+function readAsChords(members, budget = MAX_CHORDS_PER_RUN) {
+	if (!members.length) return null;
+
+	const token = runToToken(members);
+	const chord = parseChord(token.text);
+	if (chord) return [{ token, chord }];
+	if (budget <= 1 || members.length < 2) return null;
+
+	for (let cut = members.length - 1; cut >= 1; cut--) {
+		const head = runToToken(members.slice(0, cut));
+		const headChord = parseChord(head.text);
+		if (!headChord) continue;
+		const tail = readAsChords(members.slice(cut), budget - 1);
+		if (tail) return [{ token: head, chord: headChord }, ...tail];
+	}
+	return null;
+}
+
 // A sheet that this tool has already transposed still carries the original
 // glyphs underneath the white patch, so the same spot yields two chord tokens.
 // The later one in content order is the one actually visible.
@@ -180,20 +211,22 @@ function dropOverdrawn(found) {
 }
 
 export function detectChordsOnPage(textItems, { pageIndex = 0, chordFonts = null } = {}) {
-	const tokens = clusterRuns(dropTabClefs(normalize(textItems))).map(runToToken);
-	const fonts = chordFonts ?? chordFontsOf(tokens);
+	const runs = clusterRuns(dropTabClefs(normalize(textItems)));
+	const fonts = chordFonts ?? chordFontsOf(runs.map(runToToken));
 	const found = [];
 
-	for (const token of tokens) {
-		const chord = parseChord(token.text);
-		if (!chord) continue;
-		if (fonts.size && !token.fonts.some((f) => fonts.has(f))) continue;
-		found.push({ ...token, pageIndex, chord });
+	for (const members of runs) {
+		const parts = readAsChords(members);
+		if (!parts) continue;
+		for (const { token, chord } of parts) {
+			if (fonts.size && !token.fonts.some((f) => fonts.has(f))) continue;
+			found.push({ ...token, pageIndex, chord });
+		}
 	}
 
 	const kept = dropOverdrawn(found);
 	kept.sort((a, b) => b.y - a.y || a.x - b.x);
-	return { chords: kept, chordFonts: fonts, tokens };
+	return { chords: kept, chordFonts: fonts };
 }
 
 export function collectChordFonts(pages) {

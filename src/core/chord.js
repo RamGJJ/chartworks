@@ -22,6 +22,9 @@ const CHORD_RE = new RegExp(
 	`^(${NOTE})(${QUALITY_TOKEN}*)(?:/(${NOTE}))?$`
 );
 
+// "/E" on its own means: same chord as before, bass moves to E.
+const BASS_ONLY_RE = new RegExp(`^/(${NOTE})$`);
+
 const SHARP_KEY_PCS = new Set([0, 7, 2, 9, 4, 11, 6]);
 
 function splitNote(note) {
@@ -41,6 +44,12 @@ export function parseChord(text) {
 	if (typeof text !== 'string') return null;
 	const raw = text.replace(/\s+/g, '');
 	if (!raw || raw.length > 16) return null;
+	const bassOnly = BASS_ONLY_RE.exec(raw);
+	if (bassOnly) {
+		if (notePitchClass(bassOnly[1]) === null) return null;
+		return { root: null, quality: '', bass: bassOnly[1], bassOnly: true, source: text };
+	}
+
 	const m = CHORD_RE.exec(raw);
 	if (!m) return null;
 
@@ -48,7 +57,7 @@ export function parseChord(text) {
 	if (notePitchClass(root) === null) return null;
 	if (bass && notePitchClass(bass) === null) return null;
 
-	return { root, quality: quality || '', bass: bass || null, source: text };
+	return { root, quality: quality || '', bass: bass || null, bassOnly: false, source: text };
 }
 
 export function isMinorQuality(quality) {
@@ -102,13 +111,15 @@ export function transposeNote(note, semitones, style, letterShift = null) {
 }
 
 export function transposeChord(chord, semitones, style = 'sharp', letterShift = null) {
-	const root = transposeNote(chord.root, semitones, style, letterShift);
+	const root = chord.root ? transposeNote(chord.root, semitones, style, letterShift) : null;
 	const bass = chord.bass ? transposeNote(chord.bass, semitones, style, letterShift) : null;
-	return { root, quality: chord.quality, bass, source: chord.source };
+	return { root, quality: chord.quality, bass, bassOnly: chord.bassOnly, source: chord.source };
 }
 
 export function formatChord(chord, { accidentalGlyph = 'ascii' } = {}) {
-	let text = chord.root + chord.quality + (chord.bass ? `/${chord.bass}` : '');
+	let text = chord.root
+		? chord.root + chord.quality + (chord.bass ? `/${chord.bass}` : '')
+		: `/${chord.bass}`;
 	if (accidentalGlyph === 'unicode') {
 		text = text.replace(/([A-G])#/g, '$1♯').replace(/([A-G])b/g, '$1♭');
 	}
@@ -162,6 +173,8 @@ export function detectKey(chords) {
 	let first = null;
 
 	for (const chord of chords) {
+		// A lone "/E" says nothing about the key on its own.
+		if (!chord.root) continue;
 		const pc = notePitchClass(chord.root);
 		if (pc === null) continue;
 		const key = `${pc}:${qualityClass(chord.quality)}`;

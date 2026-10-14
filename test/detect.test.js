@@ -65,3 +65,29 @@ test('keeps only the visible chord when one is painted over another', () => {
 	assert.equal(atA.length, 1);
 	assert.equal(atA[0].text, 'Bb');
 });
+
+test('splits two chord symbols printed with no gap between them', () => {
+	const pair = [
+		item('A', 182.2, 200.1, 6.2, CHORD, 9.2),
+		item('7sus4', 189.2, 200.6, 22.6, CHORD, 9.2),
+		item('A', 211.3, 200.1, 6.2, CHORD, 9.2),
+		item('7', 218.6, 200.6, 4.7, CHORD, 9.2),
+	];
+	const { chords } = detectChordsOnPage([...page(), ...pair]);
+	const texts = chords.filter((c) => c.y === 200.1 || c.y === 200.6).map((c) => c.text);
+	assert.deepEqual(texts.sort(), ['A7', 'A7sus4']);
+});
+
+test('does not shatter prose into single letters', () => {
+	const prose = [
+		item('G', 300, 100, 6.4, CHORD),
+		item('uitar 1', 306.4, 100, 24.0, CHORD),
+	];
+	const { chords } = detectChordsOnPage([...page(), ...prose]);
+	assert.ok(!chords.some((c) => c.y === 100), 'nothing on that line should read as a chord');
+});
+
+test('finds a bass-only marking standing on its own', () => {
+	const { chords } = detectChordsOnPage([...page(), item('/E', 529.8, 213.4, 7.8, CHORD)]);
+	assert.ok(chords.some((c) => c.text === '/E'));
+});
