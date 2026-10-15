@@ -33,6 +33,7 @@ const state = {
 	glyph: 'ascii',
 	font: 'auto',
 	zoom: 1.25,
+	fitWidth: true,
 	showBoxes: true,
 	linked: true,
 	showFrets: true,
@@ -235,6 +236,15 @@ function syncTargetKey(doc, style) {
 	select.innerHTML = options.join('');
 }
 
+// A sheet is taller than it is wide, so width is what has to fit — on a phone
+// above all, where the default zoom would put two thirds of the page off screen.
+function fitPageToStage(page, stage) {
+	const room = stage.clientWidth - 24;
+	const sheet = page.getViewport({ scale: 1 }).width;
+	if (room <= 0 || !sheet) return;
+	state.zoom = Math.max(0.3, Math.min(3, Math.round((room / sheet) * 100) / 100));
+}
+
 // Repainting the page costs seconds on a scanned sheet, and none of the
 // overlays need it: the bitmap only changes when the page or the zoom does.
 async function paintPage(doc, page, token) {
@@ -286,6 +296,8 @@ async function renderPage() {
 
 	const page = await doc.doc.getPage(state.pageIndex + 1);
 	if (token !== state.renderToken) return;
+
+	if (state.fitWidth) fitPageToStage(page, stage);
 
 	const canvas = await paintPage(doc, page, token);
 	if (!canvas || token !== state.renderToken) return;
@@ -504,14 +516,19 @@ const PEEK_HOLD = 180;
 // printed. Holding the button lifts everything this tool drew, for as long as
 // the button is down.
 function attachPeek(wrap) {
-	wrap.addEventListener('mousedown', (down) => {
+	wrap.addEventListener('contextmenu', (e) => {
+		if (wrap.classList.contains('peeking')) e.preventDefault();
+	});
+
+	wrap.addEventListener('pointerdown', (down) => {
 		if (down.button !== 0) return;
 
 		const startedAt = Date.now();
 		wrap.classList.add('peeking');
 
 		const release = () => {
-			window.removeEventListener('mouseup', release);
+			window.removeEventListener('pointerup', release);
+			window.removeEventListener('pointercancel', release);
 			window.removeEventListener('blur', release);
 			wrap.classList.remove('peeking');
 
@@ -526,15 +543,27 @@ function attachPeek(wrap) {
 			setTimeout(() => wrap.removeEventListener('click', swallow, { capture: true }), 0);
 		};
 
-		window.addEventListener('mouseup', release);
+		window.addEventListener('pointerup', release);
+		window.addEventListener('pointercancel', release);
 		window.addEventListener('blur', release);
 	});
 }
 
+// Capture keeps a drag alive when the finger leaves the element, but throws if
+// the pointer is already gone — which must not take the drag down with it.
+function capture(element, pointerId) {
+	try {
+		element.setPointerCapture(pointerId);
+	} catch {
+		/* pointer already released */
+	}
+}
+
 function attachPicker(wrap, doc, page, viewport) {
-	wrap.addEventListener('mousedown', (down) => {
+	wrap.addEventListener('pointerdown', (down) => {
 		if (down.button !== 0) return;
 		down.preventDefault();
+		capture(wrap, down.pointerId);
 
 		const box = wrap.getBoundingClientRect();
 		const start = { x: down.clientX - box.left, y: down.clientY - box.top };
@@ -552,8 +581,9 @@ function attachPicker(wrap, doc, page, viewport) {
 		};
 
 		const finish = async (up) => {
-			window.removeEventListener('mousemove', draw);
-			window.removeEventListener('mouseup', finish);
+			window.removeEventListener('pointermove', draw);
+			window.removeEventListener('pointerup', finish);
+			window.removeEventListener('pointercancel', finish);
 			const end = draw(up);
 			band.remove();
 
@@ -566,8 +596,9 @@ function attachPicker(wrap, doc, page, viewport) {
 			});
 		};
 
-		window.addEventListener('mousemove', draw);
-		window.addEventListener('mouseup', finish);
+		window.addEventListener('pointermove', draw);
+		window.addEventListener('pointerup', finish);
+		window.addEventListener('pointercancel', finish);
 	});
 }
 
@@ -722,7 +753,7 @@ async function loadFontBytes() {
 }
 
 function attachTextPlacer(wrap, doc, viewport) {
-	wrap.addEventListener('mousedown', (down) => {
+	wrap.addEventListener('pointerdown', (down) => {
 		if (down.button !== 0 || down.target.closest('.notes-layer')) return;
 		down.preventDefault();
 
@@ -802,10 +833,11 @@ function sizeNoteHits(wrap) {
 
 function attachNoteDrag(group, doc, note, viewport) {
 	let moved = false;
-	group.addEventListener('mousedown', (down) => {
+	group.addEventListener('pointerdown', (down) => {
 		if (down.button !== 0) return;
 		down.preventDefault();
 		down.stopPropagation();
+		capture(group, down.pointerId);
 		moved = false;
 
 		const start = { x: down.clientX, y: down.clientY };
@@ -821,13 +853,15 @@ function attachNoteDrag(group, doc, note, viewport) {
 		};
 
 		const stop = () => {
-			window.removeEventListener('mousemove', drag);
-			window.removeEventListener('mouseup', stop);
+			window.removeEventListener('pointermove', drag);
+			window.removeEventListener('pointerup', stop);
+			window.removeEventListener('pointercancel', stop);
 			if (!moved) editNote(doc, note, group);
 		};
 
-		window.addEventListener('mousemove', drag);
-		window.addEventListener('mouseup', stop);
+		window.addEventListener('pointermove', drag);
+		window.addEventListener('pointerup', stop);
+		window.addEventListener('pointercancel', stop);
 	});
 }
 
@@ -1111,16 +1145,33 @@ function wire() {
 	});
 	setFretShift(0);
 
+	const showPanel = (open) => {
+		$('panel').classList.toggle('open', open);
+		$('backdrop').classList.toggle('open', open);
+		$('panelToggle').setAttribute('aria-expanded', String(open));
+	};
+	$('panelToggle').addEventListener('click', () => showPanel(!$('panel').classList.contains('open')));
+	$('backdrop').addEventListener('click', () => showPanel(false));
+	$('panelClose').addEventListener('click', () => showPanel(false));
+
 	$('pickRegion').addEventListener('click', () => setMode(state.picking ? null : 'pick'));
 	$('addText').addEventListener('click', () => setMode(state.texting ? null : 'text'));
 
 	$('zoomIn').addEventListener('click', () => {
+		state.fitWidth = false;
 		state.zoom = Math.min(3, state.zoom + 0.25);
 		renderPage();
 	});
 	$('zoomOut').addEventListener('click', () => {
-		state.zoom = Math.max(0.5, state.zoom - 0.25);
+		state.fitWidth = false;
+		state.zoom = Math.max(0.3, state.zoom - 0.25);
 		renderPage();
+	});
+
+	let resizing = null;
+	window.addEventListener('resize', () => {
+		clearTimeout(resizing);
+		resizing = setTimeout(() => state.fitWidth && renderPage(), 200);
 	});
 
 	const chooseDir = $('chooseDir');
