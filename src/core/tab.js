@@ -265,6 +265,7 @@ export function readFrets(items, staves, patches, font) {
 				lineY: row.spot.staff.lines[row.spot.string],
 				lineWidth: row.spot.staff.width,
 				string: row.spot.string,
+				strings: row.spot.staff.lines.length,
 				staffX0: row.spot.staff.x0,
 				staffX1: row.spot.staff.x1,
 			});
@@ -341,12 +342,83 @@ export async function readTabPage(page, items, OPS) {
 	const font = fretFontOf(items, staves);
 	const frets = readFrets(items, staves, patches, font);
 	const used = new Set(frets.map((f) => f.lineY));
+	const carrying = staves.filter((s) => s.lines.some((y) => used.has(y)));
+
 	return {
-		staves: staves.filter((s) => s.lines.some((y) => used.has(y))),
+		staves: carrying,
+		allStaves: staves.filter((s) => s.lines.length >= MIN_STRINGS && s.lines.length <= 6),
 		font,
 		frets,
 		alreadyShifted: Boolean(frets.restacked),
 	};
+}
+
+export function staffWithin(staves, area) {
+	let best = null;
+	for (const staff of staves) {
+		if (staff.x1 < area.x0 || staff.x0 > area.x1) continue;
+		const shared = Math.min(staff.lines.at(-1), area.y1) - Math.max(staff.lines[0], area.y0);
+		if (shared <= 0) continue;
+		if (!best || shared > best.shared) best = { staff, shared };
+	}
+	return best?.staff ?? null;
+}
+
+const median = (values, fallback) => {
+	if (!values.length) return fallback;
+	const sorted = [...values].sort((a, b) => a - b);
+	return sorted[Math.floor(sorted.length / 2)];
+};
+
+export function fretTemplate(staff, frets) {
+	const mine = frets.filter((f) => staff.lines.some((y) => Math.abs(y - f.lineY) < 0.6));
+	const singles = mine.filter((f) => f.digits === 1);
+	return {
+		unit: median(singles.map((f) => f.width), staff.step * 0.62),
+		size: median(mine.map((f) => f.size), staff.step * 1.1),
+		patchH: median(mine.map((f) => f.patchH), staff.step * 0.78),
+		patchDrop: median(mine.map((f) => f.lineY - f.patchY), staff.step * 0.37),
+		baselineDrop: median(mine.map((f) => f.lineY - f.baseline), staff.step * 0.3),
+	};
+}
+
+export function placeFret({ staff, string, value, centre, template, over = null }) {
+	const digits = over ? over.digits : String(value).length;
+	const width = over ? over.width : template.unit * digits;
+	const lineY = staff.lines[string];
+	return {
+		value,
+		digits,
+		x: over ? over.x : centre - width / 2,
+		width,
+		patchY: over ? over.patchY : lineY - template.patchDrop,
+		patchH: over ? over.patchH : template.patchH,
+		baseline: over ? over.baseline : lineY - template.baselineDrop,
+		size: over ? over.size : template.size,
+		lineY,
+		lineWidth: staff.width,
+		string,
+		strings: staff.lines.length,
+		staffX0: staff.x0,
+		staffX1: staff.x1,
+		lines: staff.lines.slice(),
+		from: over ? over.value : null,
+	};
+}
+
+export function coversFret(manual, fret) {
+	if (Math.abs(manual.lineY - fret.lineY) > 0.6) return false;
+	const shared = Math.min(manual.x + manual.width, fret.x + fret.width) - Math.max(manual.x, fret.x);
+	return shared > Math.min(manual.width, fret.width) * 0.35;
+}
+
+export function withoutCovered(frets, manual) {
+	if (!manual.length) return frets;
+	return frets.filter((fret) => !manual.some((one) => coversFret(one, fret)));
+}
+
+export function asMove(manual) {
+	return { ...manual, from: manual.from ?? manual.value, to: manual.value, ok: true, manual: true };
 }
 
 export function summarise(frets) {
@@ -370,15 +442,16 @@ export function describeShift(frets, semitones, { maxFret = DEFAULT_MAX_FRET } =
 	});
 }
 
-export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET } = {}) {
+export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET, manual = [] } = {}) {
 	const moves = [];
 	const blocked = [];
+	const byHand = (index) => manual.filter((one) => one.pageIndex === index).map(asMove);
 
 	if (pages.some((page) => page.alreadyShifted)) {
 		return {
 			semitones,
 			maxFret,
-			moves: [],
+			moves: pages.flatMap((page) => byHand(page.index)),
 			blocked: [],
 			feasible: false,
 			alreadyShifted: true,
@@ -387,7 +460,11 @@ export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET } =
 	}
 
 	for (const page of pages) {
-		for (const move of describeShift(page.frets, semitones, { maxFret })) {
+		const mine = byHand(page.index);
+		moves.push(...mine);
+		if (!semitones) continue;
+
+		for (const move of describeShift(withoutCovered(page.frets, mine), semitones, { maxFret })) {
 			const placed = { ...move, pageIndex: page.index };
 			if (placed.ok) moves.push(placed);
 			else blocked.push(placed);

@@ -345,6 +345,37 @@ button[aria-pressed="true"] {
 
 .chord-input input.pt { width: 58px; }
 
+.chord-input.frets {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+	min-width: 132px;
+}
+
+.fret-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	color: var(--muted);
+	font-size: 11px;
+}
+
+.fret-row input {
+	width: 48px;
+	text-align: center;
+	font: inherit;
+	font-size: 13px;
+	color: var(--text);
+	background: var(--panel-2);
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	padding: 5px 6px;
+}
+
+.fret-row input.bad { border-color: var(--warn); }
+.fret-foot { display: flex; justify-content: flex-end; gap: 5px; margin-top: 2px; }
+
 .row input[type="number"] {
 	width: 74px;
 	font: inherit;
@@ -375,6 +406,15 @@ button[aria-pressed="true"] {
 	border-color: rgba(255, 140, 120, 0.95);
 	background: rgba(255, 140, 120, 0.28);
 }
+
+.fret.hand {
+	border-color: rgba(198, 160, 255, 0.95);
+	background: rgba(198, 160, 255, 0.24);
+	cursor: grab;
+	touch-action: none;
+}
+
+.fret.hand:active { cursor: grabbing; }
 
 .page-wrap.peeking .ghost-layer,
 .page-wrap.peeking .notes-layer { display: none; }
@@ -546,6 +586,7 @@ button.icon {
 	.option-bar button.icon { min-width: 42px; padding: 8px 0; }
 	.chord-input { padding: 6px; gap: 5px; }
 	.chord-input input.wide { width: 130px; }
+	.fret-row input { min-height: 38px; width: 56px; }
 	.chord-input button.icon { min-width: 42px; min-height: 42px; }
 }
 

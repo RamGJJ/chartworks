@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { describeShift, groupIntoStaves, planFretShift, readFrets, summarise } from '../src/core/tab.js';
+import {
+	coversFret,
+	describeShift,
+	fretTemplate,
+	groupIntoStaves,
+	placeFret,
+	planFretShift,
+	readFrets,
+	staffWithin,
+	summarise,
+	withoutCovered,
+} from '../src/core/tab.js';
 
 const rule = (y, x0 = 50, x1 = 500, width = 0.5) => ({ y, x0, x1, width });
 
@@ -110,4 +121,103 @@ test('describes where every fret lands, in range or not', () => {
 	const up = describeShift(frets, 2, { maxFret: 24 });
 	assert.deepEqual(up.map((f) => f.ok), [true, true, false]);
 	assert.equal(up[2].to, 25);
+});
+
+test('the dragged box lands on the staff it covers most', () => {
+	const staves = [...groupIntoStaves(guitar), ...groupIntoStaves(bass)];
+	const onGuitar = staffWithin(staves, { x0: 100, x1: 140, y0: 540, y1: 570 });
+	assert.equal(onGuitar.lines.length, 6);
+
+	const onBass = staffWithin(staves, { x0: 100, x1: 140, y0: 298, y1: 320 });
+	assert.equal(onBass.lines.length, 4);
+
+	assert.equal(staffWithin(staves, { x0: 100, x1: 140, y0: 100, y1: 120 }), null);
+	assert.equal(staffWithin(staves, { x0: 900, x1: 940, y0: 540, y1: 570 }), null);
+});
+
+test('a hand written number borrows the measurements of the ones already printed', () => {
+	const staff = groupIntoStaves(guitar)[0];
+	const printed = readFrets(
+		[digit('7', 100, 552.1, 3.84)],
+		[staff],
+		[patch(100, 552.2, 3.8)],
+		'fret',
+	);
+	const template = fretTemplate(staff, printed);
+	assert.ok(Math.abs(template.unit - 3.8) < 0.3);
+	assert.ok(Math.abs(template.size - 5.4) < 0.3);
+
+	const fresh = placeFret({ staff, string: 2, value: 12, centre: 200, template });
+	assert.equal(fresh.digits, 2);
+	assert.ok(Math.abs(fresh.x + fresh.width / 2 - 200) < 0.01);
+	assert.equal(fresh.lineY, staff.lines[2]);
+	assert.equal(fresh.strings, 6);
+	assert.equal(fresh.from, null);
+});
+
+test('writing over a printed number keeps its place and its width', () => {
+	const staff = groupIntoStaves(guitar)[0];
+	const printed = readFrets(
+		[digit('7', 100, 552.1, 3.84)],
+		[staff],
+		[patch(100, 552.2, 3.8)],
+		'fret',
+	);
+	const over = printed[0];
+	const written = placeFret({
+		staff,
+		string: over.string,
+		value: 9,
+		centre: 180,
+		template: fretTemplate(staff, printed),
+		over,
+	});
+
+	assert.equal(written.x, over.x);
+	assert.equal(written.width, over.width);
+	assert.equal(written.digits, over.digits);
+	assert.equal(written.from, 7);
+	assert.ok(coversFret(written, over));
+	assert.deepEqual(withoutCovered(printed, [written]), []);
+});
+
+test('a hand written number replaces the one under it and is never transposed', () => {
+	const staff = groupIntoStaves(guitar)[0];
+	const printed = readFrets(
+		[digit('7', 100, 552.1, 3.84), digit('5', 200, 552.1, 3.84)],
+		[staff],
+		[patch(100, 552.2, 3.8), patch(200, 552.2, 3.8)],
+		'fret',
+	);
+	const written = placeFret({
+		staff,
+		string: printed[0].string,
+		value: 9,
+		centre: 180,
+		template: fretTemplate(staff, printed),
+		over: printed[0],
+	});
+
+	const plan = planFretShift([{ index: 0, frets: printed }], 2, {
+		maxFret: 24,
+		manual: [{ ...written, pageIndex: 0 }],
+	});
+	assert.deepEqual(plan.moves.map((m) => [m.from, m.to]), [[7, 9], [5, 7]]);
+	assert.equal(plan.blocked.length, 0);
+});
+
+test('hand written numbers are written out even when nothing is being shifted', () => {
+	const staff = groupIntoStaves(guitar)[0];
+	const written = placeFret({
+		staff,
+		string: 0,
+		value: 3,
+		centre: 120,
+		template: fretTemplate(staff, []),
+	});
+	const plan = planFretShift([{ index: 0, frets: [{ value: 5, lineY: 1, x: 0, width: 1 }] }], 0, {
+		maxFret: 24,
+		manual: [{ ...written, pageIndex: 0 }],
+	});
+	assert.deepEqual(plan.moves.map((m) => m.to), [3]);
 });

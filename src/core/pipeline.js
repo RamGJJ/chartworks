@@ -44,6 +44,7 @@ export function analyze(pages) {
 	return {
 		pages: analyzed,
 		notes: [],
+		tabFrets: [],
 		chordFonts,
 		key,
 		keyLabel: key ? keyName(key.pc, key.minor) : null,
@@ -89,6 +90,46 @@ export function removeNote(analysis, id) {
 	const before = analysis.notes.length;
 	analysis.notes = analysis.notes.filter((one) => one.id !== id);
 	return analysis.notes.length !== before;
+}
+
+let tabCounter = 0;
+
+export function addTabFret(analysis, { pageIndex, ...fret }) {
+	if (!analysis.pages[pageIndex]) return null;
+	const value = Number(fret.value);
+	if (!Number.isInteger(value) || value < 0) return null;
+
+	const placed = { ...fret, value, pageIndex, id: `tab-${++tabCounter}` };
+	analysis.tabFrets = analysis.tabFrets.filter((one) => !sameSpot(one, placed));
+	analysis.tabFrets.push(placed);
+	return placed;
+}
+
+function sameSpot(a, b) {
+	if (a.pageIndex !== b.pageIndex || Math.abs(a.lineY - b.lineY) > 0.6) return false;
+	const shared = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+	return shared > Math.min(a.width, b.width) * 0.35;
+}
+
+export function updateTabFret(analysis, id, patch) {
+	const fret = analysis.tabFrets.find((one) => one.id === id);
+	if (!fret) return null;
+
+	if (patch.value !== undefined) {
+		const value = Number(patch.value);
+		if (!Number.isInteger(value) || value < 0) return null;
+		fret.value = value;
+	}
+	for (const key of ['x', 'lineY', 'patchY', 'baseline', 'string']) {
+		if (patch[key] !== undefined) fret[key] = patch[key];
+	}
+	return fret;
+}
+
+export function removeTabFret(analysis, id) {
+	const before = analysis.tabFrets.length;
+	analysis.tabFrets = analysis.tabFrets.filter((one) => one.id !== id);
+	return analysis.tabFrets.length !== before;
 }
 
 export function recomputeKey(analysis) {
