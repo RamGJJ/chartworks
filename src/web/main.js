@@ -1664,7 +1664,7 @@ function wire() {
 			state.outDir = await window.showDirectoryPicker({ mode: 'readwrite' });
 			$('outline').textContent = `저장 위치: ${state.outDir.name}`;
 		} catch {
-			/* 사용자가 취소 */
+			/* the reader cancelled */
 		}
 	});
 
