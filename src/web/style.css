@@ -497,7 +497,8 @@ button.icon {
 	color: var(--muted);
 }
 
-.option-bar label { display: flex; align-items: center; gap: 6px; }
+.option-bar label,
+.option-bar .field { display: flex; align-items: center; gap: 6px; }
 .option-bar .grow { flex: 1 1 180px; min-width: 120px; }
 .option-bar input[type="text"] {
 	flex: 1;
@@ -510,9 +511,13 @@ button.icon {
 	border-radius: 7px;
 	padding: 5px 8px;
 }
-.option-bar button { padding: 5px 11px; font-size: 12px; }
+.option-bar button { padding: 5px 11px; font-size: 12px; min-height: 31px; }
+.option-bar button.icon { min-width: 34px; padding: 5px 0; font-size: 14px; }
 .option-bar input[type="number"] {
-	width: 68px;
+	width: 52px;
+	text-align: center;
+	appearance: textfield;
+	-moz-appearance: textfield;
 	font: inherit;
 	font-size: 13px;
 	color: var(--text);
@@ -520,6 +525,11 @@ button.icon {
 	border: 1px solid var(--line);
 	border-radius: 7px;
 	padding: 5px 7px;
+}
+.option-bar input[type="number"]::-webkit-outer-spin-button,
+.option-bar input[type="number"]::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
 }
 .option-bar .unit { color: var(--muted); }
 .option-bar .note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -533,6 +543,7 @@ button.icon {
 	.option-bar input[type="number"],
 	.option-bar input[type="text"] { min-height: 38px; }
 	.option-bar button { min-height: 38px; padding: 8px 12px; }
+	.option-bar button.icon { min-width: 42px; padding: 8px 0; }
 	.chord-input { padding: 6px; gap: 5px; }
 	.chord-input input.wide { width: 130px; }
 	.chord-input button.icon { min-width: 42px; min-height: 42px; }

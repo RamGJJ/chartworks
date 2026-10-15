@@ -1275,6 +1275,15 @@ function wire() {
 		}
 	});
 
+	const stepNoteSize = (by) => {
+		const field = $('noteSize');
+		const now = Number(field.value) || 9;
+		field.value = String(Math.max(4, Math.min(48, Math.round((now + by) * 2) / 2)));
+		field.dispatchEvent(new Event('change'));
+	};
+	$('noteSmaller').addEventListener('click', () => stepNoteSize(-0.5));
+	$('noteBigger').addEventListener('click', () => stepNoteSize(0.5));
+
 	$('noteText').addEventListener('input', (e) => {
 		const doc = active();
 		const text = e.target.value.trim();
