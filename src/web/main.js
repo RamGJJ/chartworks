@@ -39,6 +39,8 @@ const state = {
 	showFrets: true,
 	picking: false,
 	texting: false,
+	noteSize: null,
+	editing: null,
 	painted: null,
 	renderTask: null,
 	outDir: null,
@@ -711,8 +713,6 @@ function askForChord(wrap, css, initial, onDone) {
 
 	const panel = document.createElement('div');
 	panel.className = 'chord-input';
-	panel.style.left = `${css.left}px`;
-	panel.style.top = `${css.bottom + 6}px`;
 
 	const input = document.createElement('input');
 	input.type = 'text';
@@ -721,14 +721,6 @@ function askForChord(wrap, css, initial, onDone) {
 	input.autocomplete = 'off';
 	input.placeholder = '예: Am7';
 	input.value = initial;
-
-	const ok = document.createElement('button');
-	ok.type = 'button';
-	ok.textContent = '넣기';
-
-	const cancel = document.createElement('button');
-	cancel.type = 'button';
-	cancel.textContent = '취소';
 
 	const close = () => panel.remove();
 	const submit = () => {
@@ -750,11 +742,10 @@ function askForChord(wrap, css, initial, onDone) {
 		}
 		if (e.key === 'Escape') close();
 	});
-	ok.addEventListener('click', submit);
-	cancel.addEventListener('click', close);
 
-	panel.append(input, ok, cancel);
+	panel.append(input, iconButton('✓', '넣기', submit), iconButton('✕', '빼기', close));
 	wrap.append(panel);
+	placePrompt(panel, wrap, { left: css.left, top: css.bottom });
 	input.focus();
 	input.select();
 }
@@ -778,10 +769,16 @@ function attachTextPlacer(wrap, doc, viewport) {
 		const css = { left: down.clientX - box.left, top: down.clientY - box.top };
 		const [x, baseline] = viewport.convertToPdfPoint(css.left, css.top);
 
-		askForText(wrap, css, '', (text, size) => {
-			addNote(doc.analysis, { pageIndex: state.pageIndex, text, x, baseline, size });
-			renderPage();
-		});
+		askForText(
+			wrap,
+			css,
+			'',
+			(text) => {
+				addNote(doc.analysis, { pageIndex: state.pageIndex, text, x, baseline, size: noteSize(doc) });
+				renderPage();
+			},
+			() => {},
+		);
 	});
 }
 
@@ -873,7 +870,7 @@ function attachNoteDrag(group, doc, note, viewport) {
 			window.removeEventListener('pointermove', drag);
 			window.removeEventListener('pointerup', stop);
 			window.removeEventListener('pointercancel', stop);
-			if (!moved) editNote(doc, note, group);
+			if (!moved) editNote(doc, note, group, viewport);
 		};
 
 		window.addEventListener('pointermove', drag);
@@ -882,35 +879,58 @@ function attachNoteDrag(group, doc, note, viewport) {
 	});
 }
 
-function editNote(doc, note, anchor) {
+function editNote(doc, note, anchor, viewport) {
 	const wrap = anchor.closest('.page-wrap');
 	const box = wrap.getBoundingClientRect();
 	const spot = anchor.getBoundingClientRect();
 	const css = { left: spot.left - box.left, top: spot.bottom - box.top };
 
+	// The size lives in the bar at the top while this note is being edited,
+	// the way a drawing program shows the selected object's properties.
+	selectNote(doc, note, anchor, viewport);
+
 	askForText(
 		wrap,
 		css,
 		note.text,
-		(text, size) => {
-			updateNote(doc.analysis, note.id, { text, size });
+		(text) => {
+			updateNote(doc.analysis, note.id, { text });
+			selectNote(doc, null);
 			renderPage();
 		},
 		() => {
 			removeNote(doc.analysis, note.id);
+			selectNote(doc, null);
 			renderPage();
 		},
-		note.size,
 	);
 }
 
-function askForText(wrap, css, initial, onDone, onDelete = null, size = null) {
+function noteSize(doc) {
+	if (state.noteSize) return state.noteSize;
+	return doc?.analysis ? chordSizeFor(doc) : 9;
+}
+
+function selectNote(doc, note, group = null, viewport = null) {
+	state.editing = note ? { note, group, viewport } : null;
+	$('textBar').hidden = !state.texting && !note;
+	$('noteSize').value = String(Math.round((note ? note.size : noteSize(doc)) * 10) / 10);
+}
+
+// Redrawing the page would take the open prompt with it, so the one note being
+// edited is restyled where it stands.
+function restyleNote({ note, group, viewport }) {
+	if (!group || !viewport) return;
+	group.querySelector('text')?.setAttribute('font-size', note.size * state.zoom);
+	place(group, note, viewport);
+	sizeNoteHits(group.closest('.page-wrap'));
+}
+
+function askForText(wrap, css, initial, onDone, onRemove) {
 	wrap.querySelector('.chord-input')?.remove();
 
 	const panel = document.createElement('div');
 	panel.className = 'chord-input';
-	panel.style.left = `${css.left}px`;
-	panel.style.top = `${css.top + 6}px`;
 
 	const input = document.createElement('input');
 	input.type = 'text';
@@ -920,19 +940,6 @@ function askForText(wrap, css, initial, onDone, onDelete = null, size = null) {
 	input.placeholder = '예: 2번만 반복';
 	input.value = initial;
 
-	const points = document.createElement('input');
-	points.type = 'number';
-	points.className = 'pt';
-	points.min = '4';
-	points.max = '48';
-	points.step = '0.5';
-	points.title = '글자 크기 (pt)';
-	points.value = String(Math.round((size ?? defaultNoteSize()) * 10) / 10);
-
-	const ok = document.createElement('button');
-	ok.type = 'button';
-	ok.textContent = initial ? '고치기' : '넣기';
-
 	const close = () => panel.remove();
 	const submit = () => {
 		const text = input.value.trim();
@@ -941,7 +948,7 @@ function askForText(wrap, css, initial, onDone, onDelete = null, size = null) {
 			return;
 		}
 		close();
-		onDone(text, Number(points.value) || defaultNoteSize());
+		onDone(text);
 	};
 
 	input.addEventListener('input', () => input.classList.remove('bad'));
@@ -950,37 +957,46 @@ function askForText(wrap, css, initial, onDone, onDelete = null, size = null) {
 			e.preventDefault();
 			submit();
 		}
-		if (e.key === 'Escape') close();
-	});
-	ok.addEventListener('click', submit);
-
-	panel.append(input, points, ok);
-
-	if (onDelete) {
-		const remove = document.createElement('button');
-		remove.type = 'button';
-		remove.textContent = '지우기';
-		remove.addEventListener('click', () => {
+		if (e.key === 'Escape') {
 			close();
-			onDelete();
-		});
-		panel.append(remove);
-	} else {
-		const cancel = document.createElement('button');
-		cancel.type = 'button';
-		cancel.textContent = '취소';
-		cancel.addEventListener('click', close);
-		panel.append(cancel);
-	}
+			onRemove();
+		}
+	});
 
+	panel.append(input, iconButton('✓', '넣기', submit), iconButton('✕', '빼기', () => {
+		close();
+		onRemove();
+	}));
 	wrap.append(panel);
+	placePrompt(panel, wrap, css);
 	input.focus();
 	input.select();
 }
 
-function defaultNoteSize() {
-	const doc = active();
-	return doc ? chordSizeFor(doc) : 9;
+function iconButton(glyph, label, onPress) {
+	const button = document.createElement('button');
+	button.type = 'button';
+	button.className = 'icon';
+	button.textContent = glyph;
+	button.title = label;
+	button.setAttribute('aria-label', label);
+	button.addEventListener('click', onPress);
+	return button;
+}
+
+// Dropped where the finger landed, the prompt runs off the right edge of a
+// phone. Pull it back inside the page once its width is known.
+function placePrompt(panel, wrap, css) {
+	panel.style.left = '0px';
+	panel.style.top = `${css.top + 6}px`;
+
+	const room = wrap.getBoundingClientRect();
+	const size = panel.getBoundingClientRect();
+	const left = Math.max(4, Math.min(css.left, room.width - size.width - 4));
+	const top = Math.min(css.top + 6, Math.max(4, room.height - size.height - 4));
+
+	panel.style.left = `${left}px`;
+	panel.style.top = `${top}px`;
 }
 
 async function convert(doc) {
@@ -1147,9 +1163,23 @@ function wire() {
 		$('pickRegion').setAttribute('aria-pressed', String(state.picking));
 		$('addText').setAttribute('aria-pressed', String(state.texting));
 		$('pickHint').hidden = !state.picking;
-		$('textHint').hidden = !state.texting;
+		state.editing = null;
+		$('textBar').hidden = !state.texting;
+		if (state.texting) $('noteSize').value = String(Math.round(noteSize(active() ?? {}) * 10) / 10);
 		renderPage();
 	};
+
+	$('noteSize').addEventListener('change', (e) => {
+		const value = Math.max(4, Math.min(48, Number(e.target.value) || 9));
+		e.target.value = String(value);
+		const doc = active();
+		if (state.editing && doc) {
+			updateNote(doc.analysis, state.editing.note.id, { size: value });
+			restyleNote(state.editing);
+		} else {
+			state.noteSize = value;
+		}
+	});
 
 	$('linked').addEventListener('change', (e) => {
 		state.linked = e.target.checked;

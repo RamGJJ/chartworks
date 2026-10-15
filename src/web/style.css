@@ -337,7 +337,6 @@ button[aria-pressed="true"] {
 	stroke: var(--accent);
 }
 
-.chord-input input.wide { width: 170px; }
 .chord-input input.pt { width: 58px; }
 
 .row input[type="number"] {
@@ -470,4 +469,48 @@ button[aria-pressed="true"] {
 	.check input { width: 18px; height: 18px; }
 	.files li { padding: 10px 9px; }
 	.stage { padding: 8px; }
+}
+
+button.icon {
+	min-width: 38px;
+	padding: 7px 0;
+	font-size: 15px;
+	line-height: 1;
+	text-align: center;
+}
+
+.option-bar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 14px;
+	border-bottom: 1px solid var(--line);
+	background: #1d2635;
+	font-size: 12px;
+	color: var(--muted);
+}
+
+.option-bar label { display: flex; align-items: center; gap: 6px; }
+.option-bar input[type="number"] {
+	width: 68px;
+	font: inherit;
+	font-size: 13px;
+	color: var(--text);
+	background: var(--panel-2);
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	padding: 5px 7px;
+}
+.option-bar .unit { color: var(--muted); }
+.option-bar .note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.chord-input input.wide { width: 150px; }
+
+@media (max-width: 767px) {
+	.option-bar { padding: 8px 10px; }
+	.option-bar .note { display: none; }
+	.option-bar input[type="number"] { min-height: 38px; }
+	.chord-input { padding: 6px; gap: 5px; }
+	.chord-input input.wide { width: 130px; }
+	.chord-input button.icon { min-width: 42px; min-height: 42px; }
 }
