@@ -517,6 +517,12 @@ function markFor(doc, edit, viewport) {
 const MIN_DRAG = 6;
 const PEEK_HOLD = 180;
 
+// The prompt sits inside the page, so without this every tap on its field or
+// its buttons reads as a tap on the sheet behind it — which in text mode threw
+// the prompt away and opened a new one, and everywhere blocked the focus the
+// field needs to take typing at all.
+const onPrompt = (event) => Boolean(event.target.closest?.('.chord-input'));
+
 // With the result painted over the sheet there is no way to see what was
 // printed. Holding the button lifts everything this tool drew, for as long as
 // the button is down.
@@ -526,7 +532,7 @@ function attachPeek(wrap) {
 	});
 
 	wrap.addEventListener('pointerdown', (down) => {
-		if (down.button !== 0) return;
+		if (down.button !== 0 || onPrompt(down)) return;
 
 		const startedAt = Date.now();
 		wrap.classList.add('peeking');
@@ -566,7 +572,7 @@ function capture(element, pointerId) {
 
 function attachPicker(wrap, doc, page, viewport) {
 	wrap.addEventListener('pointerdown', (down) => {
-		if (down.button !== 0) return;
+		if (down.button !== 0 || onPrompt(down)) return;
 		down.preventDefault();
 		capture(wrap, down.pointerId);
 
@@ -710,6 +716,9 @@ function askForChord(wrap, css, initial, onDone) {
 
 	const input = document.createElement('input');
 	input.type = 'text';
+	input.enterKeyHint = 'done';
+	input.autocapitalize = 'off';
+	input.autocomplete = 'off';
 	input.placeholder = '예: Am7';
 	input.value = initial;
 
@@ -735,7 +744,10 @@ function askForChord(wrap, css, initial, onDone) {
 
 	input.addEventListener('input', () => input.classList.remove('bad'));
 	input.addEventListener('keydown', (e) => {
-		if (e.key === 'Enter') submit();
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			submit();
+		}
 		if (e.key === 'Escape') close();
 	});
 	ok.addEventListener('click', submit);
@@ -759,7 +771,7 @@ async function loadFontBytes() {
 
 function attachTextPlacer(wrap, doc, viewport) {
 	wrap.addEventListener('pointerdown', (down) => {
-		if (down.button !== 0 || down.target.closest('.notes-layer')) return;
+		if (down.button !== 0 || onPrompt(down) || down.target.closest('.notes-layer')) return;
 		down.preventDefault();
 
 		const box = wrap.getBoundingClientRect();
@@ -903,6 +915,8 @@ function askForText(wrap, css, initial, onDone, onDelete = null, size = null) {
 	const input = document.createElement('input');
 	input.type = 'text';
 	input.className = 'wide';
+	input.enterKeyHint = 'done';
+	input.autocomplete = 'off';
 	input.placeholder = '예: 2번만 반복';
 	input.value = initial;
 
@@ -932,7 +946,10 @@ function askForText(wrap, css, initial, onDone, onDelete = null, size = null) {
 
 	input.addEventListener('input', () => input.classList.remove('bad'));
 	input.addEventListener('keydown', (e) => {
-		if (e.key === 'Enter') submit();
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			submit();
+		}
 		if (e.key === 'Escape') close();
 	});
 	ok.addEventListener('click', submit);
