@@ -406,7 +406,7 @@ button[aria-pressed="true"] {
 
 /* A drag has to beat the browser's own scrolling, but only where one can
    start: the rest of the sheet still scrolls under a finger. */
-.page-wrap.picking { touch-action: none; }
+.page-wrap.boxing { touch-action: none; }
 .notes-layer .note { touch-action: none; }
 .page-wrap { -webkit-touch-callout: none; }
 .page-wrap.peeking { user-select: none; -webkit-user-select: none; }

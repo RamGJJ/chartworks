@@ -311,7 +311,7 @@ async function renderPage() {
 	if (!canvas || token !== state.renderToken) return;
 
 	const wrap = document.createElement('div');
-	wrap.className = `page-wrap${state.picking || state.texting ? ' picking' : ''}`;
+	wrap.className = `page-wrap${state.picking || state.texting ? ' picking' : ''}${state.picking ? ' boxing' : ''}`;
 	wrap.style.width = canvas.style.width;
 	wrap.style.height = canvas.style.height;
 	wrap.append(canvas);
@@ -517,6 +517,7 @@ function markFor(doc, edit, viewport) {
 
 const MIN_DRAG = 6;
 const PEEK_HOLD = 180;
+const TAP_SLOP = 8;
 
 // The prompt sits inside the page, so without this every tap on its field or
 // its buttons reads as a tap on the sheet behind it — which in text mode threw
@@ -762,22 +763,35 @@ async function loadFontBytes() {
 function attachTextPlacer(wrap, doc, viewport) {
 	wrap.addEventListener('pointerdown', (down) => {
 		if (down.button !== 0 || onPrompt(down) || down.target.closest('.notes-layer')) return;
-		down.preventDefault();
 
-		const box = wrap.getBoundingClientRect();
-		const css = { left: down.clientX - box.left, top: down.clientY - box.top };
-		const [x, baseline] = viewport.convertToPdfPoint(css.left, css.top);
+		const from = { x: down.clientX, y: down.clientY };
+		const forget = () => {
+			window.removeEventListener('pointerup', settle);
+			window.removeEventListener('pointercancel', forget);
+		};
 
-		askForText(
-			wrap,
-			css,
-			'',
-			(text) => {
-				addNote(doc.analysis, { pageIndex: state.pageIndex, text, x, baseline, size: noteSize(doc) });
-				renderPage();
-			},
-			() => {},
-		);
+		function settle(up) {
+			forget();
+			if (Math.hypot(up.clientX - from.x, up.clientY - from.y) > TAP_SLOP) return;
+
+			const box = wrap.getBoundingClientRect();
+			const css = { left: up.clientX - box.left, top: up.clientY - box.top };
+			const [x, baseline] = viewport.convertToPdfPoint(css.left, css.top);
+
+			askForText(
+				wrap,
+				css,
+				'',
+				(text) => {
+					addNote(doc.analysis, { pageIndex: state.pageIndex, text, x, baseline, size: noteSize(doc) });
+					renderPage();
+				},
+				() => {},
+			);
+		}
+
+		window.addEventListener('pointerup', settle);
+		window.addEventListener('pointercancel', forget);
 	});
 }
 
