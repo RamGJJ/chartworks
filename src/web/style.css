@@ -199,7 +199,7 @@ select {
 .viewer-bar .spacer { flex: 1; }
 .viewer-bar span { color: var(--muted); font-size: 12px; }
 
-.stage { flex: 1; overflow: auto; padding: 20px; display: flex; justify-content: center; }
+.stage { flex: 1; overflow: auto; padding: 20px; display: flex; justify-content: center; justify-content: safe center; }
 .stage .empty { color: var(--muted); align-self: center; }
 
 .page-wrap { position: relative; align-self: flex-start; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
