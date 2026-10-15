@@ -34,6 +34,7 @@ const state = {
 	font: 'auto',
 	zoom: 1.25,
 	showBoxes: true,
+	linked: true,
 	showFrets: true,
 	picking: false,
 	texting: false,
@@ -996,12 +997,39 @@ async function saveAll() {
 	setStatus(`${done}개 저장 완료${skipped ? `, ${skipped}개는 고칠 것이 없어 건너뜀` : ''}`, 'ok');
 }
 
-function setSemitones(value) {
-	state.semitones = Math.max(-11, Math.min(11, Math.round(value)));
-	$('semis').textContent = state.semitones > 0 ? `+${state.semitones}` : `${state.semitones}`;
+const steps = (value) => Math.max(-11, Math.min(11, Math.round(value)));
+const signed = (value) => (value > 0 ? `+${value}` : `${value}`);
+
+// Showing a value and acting on it are kept apart so the two amounts can feed
+// each other when they are linked, without either one calling back.
+function showSemitones(value) {
+	state.semitones = steps(value);
+	$('semis').textContent = signed(state.semitones);
 	$('slider').value = String(state.semitones);
+}
+
+function showFretShift(value) {
+	state.fretShift = steps(value);
+	$('frets').textContent = signed(state.fretShift);
+	$('fretSlider').value = String(state.fretShift);
+}
+
+function refreshShift() {
 	syncKeyLine();
+	syncTabLine();
 	renderPage();
+}
+
+function setSemitones(value) {
+	showSemitones(value);
+	if (state.linked) showFretShift(state.semitones);
+	refreshShift();
+}
+
+function setFretShift(value) {
+	showFretShift(value);
+	if (state.linked) showSemitones(state.fretShift);
+	refreshShift();
 }
 
 function wire() {
@@ -1067,13 +1095,11 @@ function wire() {
 		renderPage();
 	};
 
-	const setFretShift = (value) => {
-		state.fretShift = Math.max(-11, Math.min(11, Math.round(value)));
-		$('frets').textContent = state.fretShift > 0 ? `+${state.fretShift}` : `${state.fretShift}`;
-		$('fretSlider').value = String(state.fretShift);
-		syncTabLine();
-		renderPage();
-	};
+	$('linked').addEventListener('change', (e) => {
+		state.linked = e.target.checked;
+		if (state.linked) setFretShift(state.semitones);
+	});
+
 	$('fretUp').addEventListener('click', () => setFretShift(state.fretShift + 1));
 	$('fretDown').addEventListener('click', () => setFretShift(state.fretShift - 1));
 	$('fretSlider').addEventListener('input', (e) => setFretShift(Number(e.target.value)));
