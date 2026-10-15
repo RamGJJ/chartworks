@@ -10,6 +10,7 @@ const FONT_CHOICES = {
 const PAD_X = 0.6;
 const PAD_Y = 0.6;
 const NON_LATIN1 = /[^ -ÿ]/;
+const STUCK_INK = rgb(0.84, 0.15, 0.1);
 
 function pickFontByWidth(fonts, edits) {
 	// A hand-marked chord's width is the box someone dragged, which says nothing
@@ -88,7 +89,7 @@ function pickFretFont(fonts, moves) {
 // through, a white patch opens a hole in it, then the digits go in. Redoing all
 // three keeps a widened number from striking the line, and closes the hole back
 // up when the number gets shorter.
-function drawFret(page, move, font, debug) {
+function drawFret(page, move, font, debug, ink) {
 	const box = page.getMediaBox();
 	const unit = move.width / move.digits;
 	const text = String(move.to);
@@ -142,7 +143,7 @@ function drawFret(page, move, font, debug) {
 			y: move.baseline + box.y,
 			size: move.size,
 			font,
-			color: rgb(0, 0, 0),
+			color: ink,
 		});
 	}
 }
@@ -215,17 +216,25 @@ export async function applyPlan(originalBytes, plan, options = {}) {
 		written++;
 	}
 
+	// A fret that cannot move is redrawn where it stands, in red, so the sheet
+	// says which notes were left behind instead of hiding it.
 	const fretMoves = options.fretMoves ?? [];
-	if (fretMoves.length) {
-		const fretFont = fonts[pickFretFont(fonts, fretMoves)];
-		for (const move of fretMoves) {
+	const fretStuck = options.fretStuck ?? [];
+	if (fretMoves.length || fretStuck.length) {
+		const fretFont = fonts[pickFretFont(fonts, fretMoves.length ? fretMoves : fretStuck)];
+		const jobs = [
+			...fretMoves.map((move) => ({ move, ink: rgb(0, 0, 0) })),
+			...fretStuck.map((move) => ({ move: { ...move, to: move.from }, ink: STUCK_INK })),
+		];
+
+		for (const { move, ink } of jobs) {
 			const page = pages[move.pageIndex];
 			if (!page) continue;
 			if (page.getRotation().angle % 360 !== 0) {
 				skipped.push({ ...move, reason: 'rotated-page' });
 				continue;
 			}
-			drawFret(page, move, fretFont, debug);
+			drawFret(page, move, fretFont, debug, ink);
 			written++;
 		}
 	}

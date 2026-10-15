@@ -394,10 +394,13 @@ export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET } =
 		}
 	}
 
+	// What can move, moves. A note that would land off the neck stays where it
+	// is and gets marked, which a player can read and work around; dropping the
+	// whole sheet over one open string leaves them nothing.
 	return {
 		semitones,
 		maxFret,
-		moves: blocked.length ? [] : moves,
+		moves,
 		blocked,
 		feasible: blocked.length === 0,
 		alreadyShifted: false,

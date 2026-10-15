@@ -77,13 +77,16 @@ test('shifts every fret and reports the range it needs', () => {
 	assert.equal(up.feasible, true);
 	assert.deepEqual(up.moves.map((m) => m.to), [2, 7, 14]);
 
+	// What fits still moves; what does not is handed back to be marked.
 	const down = planFretShift(pages, -1, { maxFret: 24 });
 	assert.equal(down.feasible, false);
-	assert.equal(down.moves.length, 0);
+	assert.deepEqual(down.moves.map((m) => m.to), [4, 11]);
 	assert.deepEqual(down.blocked.map((m) => m.from), [0]);
 
-	const tooHigh = planFretShift([{ index: 0, frets: [{ value: 22 }] }], 4, { maxFret: 24 });
+	const tooHigh = planFretShift([{ index: 0, frets: [{ value: 22 }, { value: 2 }] }], 4, { maxFret: 24 });
 	assert.equal(tooHigh.feasible, false);
+	assert.deepEqual(tooHigh.moves.map((m) => m.to), [6]);
+	assert.deepEqual(tooHigh.blocked.map((m) => m.from), [22]);
 });
 
 test('refuses a sheet that carries two layers of digits', () => {

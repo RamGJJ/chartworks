@@ -91,13 +91,9 @@ async function run() {
 					tab.push({ index: p.index, ...(await readTabPage(page, p.items, pdfjs.OPS)) });
 				}
 				shift = planFretShift(tab, args.frets, { maxFret: args.maxFret });
-				if (shift.total && !shift.feasible) {
+				if (shift.alreadyShifted) {
 					summary.failed++;
-					const shape = summarise(tab.flatMap((t) => t.frets));
-					const why = shift.alreadyShifted
-						? '이미 한 번 옮긴 악보'
-						: `프렛 ${shape.min}~${shape.max} 라 ${args.frets > 0 ? '+' : ''}${args.frets} 불가`;
-					console.log(`  !!  ${rel}  ${why}`);
+					console.log(`  !!  ${rel}  이미 한 번 옮긴 악보`);
 					continue;
 				}
 			}
@@ -128,6 +124,7 @@ async function run() {
 				fontChoice: args.font,
 				debug: args.debug,
 				fretMoves: shift.moves,
+				fretStuck: shift.blocked,
 			});
 
 			const dest = path.join(outRoot, rel);
@@ -136,7 +133,9 @@ async function run() {
 
 			summary.ok++;
 			summary.edits += result.written;
-			const tabNote = shift.moves.length ? `, ${shift.moves.length} frets` : '';
+			const tabNote = shift.moves.length || shift.blocked.length
+				? `, ${shift.moves.length} frets${shift.blocked.length ? ` (${shift.blocked.length} stuck)` : ''}`
+				: '';
 			console.log(`  ok  ${rel}  ${analysis.keyLabel ?? '?'} -> ${target ?? '?'}  (${result.written} edits${tabNote}, font=${result.font})`);
 		} catch (err) {
 			summary.failed++;

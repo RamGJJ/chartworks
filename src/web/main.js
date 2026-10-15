@@ -191,10 +191,10 @@ function syncTabLine() {
 		const low = plan.blocked.filter((m) => m.to < 0).length;
 		const high = plan.blocked.length - low;
 		const why = low && high
-			? `${low}개는 0 미만, ${high}개는 ${state.maxFret}번 프렛을 넘음`
-			: low ? `${low}개가 0 미만` : `${high}개가 ${state.maxFret}번 프렛을 넘음`;
+			? `${low}개는 0 미만, ${high}개는 ${state.maxFret}번 프렛 초과`
+			: low ? `0 미만이라` : `${state.maxFret}번 프렛을 넘어`;
 		el.className = 'keyline warn';
-		el.textContent = `${head} · 옮길 수 없습니다 — ${why}`;
+		el.innerHTML = `${head} · <b>${plan.moves.length}개 이동</b>, ${plan.blocked.length}개는 ${why} 그대로 두고 빨갛게 표시`;
 		return;
 	}
 	el.innerHTML = `${head} <span class="arrow">→</span> <b>${shape.min + state.fretShift}~${shape.max + state.fretShift}</b> · ${plan.moves.length}개 이동`;
@@ -328,9 +328,7 @@ async function renderPage() {
 	const ghosts = [
 		...(state.showBoxes ? here.filter((edit) => edit.changed) : []),
 	];
-	// A shift that cannot be made is not made at all, so nothing is previewed.
-	const willShift = state.fretShift !== 0 && currentShift(doc).feasible;
-	const movingFrets = state.showFrets && willShift ? frets : [];
+	const movingFrets = state.showFrets && state.fretShift ? frets.filter((f) => f.ok) : [];
 	if (ghosts.length || movingFrets.length) {
 		wrap.append(ghostLayer(ghosts, movingFrets, cssViewport, previewFont(doc)));
 	}
@@ -1007,6 +1005,7 @@ async function convert(doc) {
 		fontChoice: state.font,
 		loadFontBytes,
 		fretMoves: state.fretShift ? shift.moves : [],
+		fretStuck: state.fretShift ? shift.blocked : [],
 	});
 }
 
@@ -1054,15 +1053,12 @@ async function saveAll() {
 	let done = 0;
 	let skipped = 0;
 	const saved = [];
+	let stuck = 0;
 
 	for (const doc of state.docs) {
 		const shift = currentShift(doc);
-		if (state.fretShift && !shift.feasible && shift.total) {
-			setStatus(`${doc.name} — 탭을 ${state.fretShift > 0 ? '+' : ''}${state.fretShift}만큼 옮길 수 없어 건너뜀`, 'err');
-			skipped++;
-			continue;
-		}
-		if (!doc.analysis.chordCount && !doc.analysis.notes.length && !shift.moves.length) {
+		stuck += state.fretShift ? shift.blocked.length : 0;
+		if (!doc.analysis.chordCount && !doc.analysis.notes.length && !shift.moves.length && !shift.blocked.length) {
 			skipped++;
 			continue;
 		}
@@ -1093,7 +1089,8 @@ async function saveAll() {
 	}
 
 	$('save').disabled = false;
-	setStatus(`${done}개 저장 완료${how}${skipped ? `, ${skipped}개는 고칠 것이 없어 건너뜀` : ''}`, 'ok');
+	const note = stuck ? `, 프렛 ${stuck}개는 범위를 벗어나 빨갛게 표시` : '';
+	setStatus(`${done}개 저장 완료${how}${note}${skipped ? `, ${skipped}개는 고칠 것이 없어 건너뜀` : ''}`, 'ok');
 }
 
 const steps = (value) => Math.max(-11, Math.min(11, Math.round(value)));

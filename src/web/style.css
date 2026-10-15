@@ -185,7 +185,7 @@ select {
 .status.ok { color: var(--ok); }
 .status.err { color: var(--warn); }
 
-.viewer { display: flex; flex-direction: column; min-width: 0; }
+.viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .viewer-bar {
 	display: flex;
