@@ -195,6 +195,7 @@ select {
 	border-bottom: 1px solid var(--line);
 }
 
+.viewer-bar .bar-group { display: flex; align-items: center; gap: 8px; }
 .viewer-bar .spacer { flex: 1; }
 .viewer-bar span { color: var(--muted); font-size: 12px; }
 
@@ -407,7 +408,7 @@ button[aria-pressed="true"] {
 /* A drag has to beat the browser's own scrolling, but only where one can
    start: the rest of the sheet still scrolls under a finger. */
 .page-wrap.boxing { touch-action: none; }
-.notes-layer .note { touch-action: none; }
+.notes-layer { touch-action: none; }
 .page-wrap { -webkit-touch-callout: none; }
 .page-wrap.peeking { user-select: none; -webkit-user-select: none; }
 
@@ -456,17 +457,18 @@ button[aria-pressed="true"] {
 	.topbar h1 span { display: block; margin: 1px 0 0; margin-left: 0; }
 	.hint { font-size: 11px; margin-top: 4px; }
 
-	/* 손가락으로 누를 수 있는 크기로. 바는 줄바꿈 대신 옆으로 밀린다. */
+	/* 손가락으로 누를 수 있는 크기로. 좁으면 작업 버튼이 아랫줄로 내려가
+	   한 줄도 가로로 밀리지 않는다. */
 	.viewer-bar {
 		gap: 6px;
 		padding: 8px 10px;
-		overflow-x: auto;
-		flex-wrap: nowrap;
-		scrollbar-width: none;
+		flex-wrap: wrap;
 	}
-	.viewer-bar::-webkit-scrollbar { display: none; }
-	.viewer-bar > * { flex: none; white-space: nowrap; }
-	.viewer-bar .spacer { display: none; }
+	.viewer-bar > *,
+	.viewer-bar .bar-group > * { flex: none; white-space: nowrap; }
+	.viewer-bar .bar-group { gap: 6px; }
+	.viewer-bar .tools { order: 1; flex: 1 0 100%; }
+	.viewer-bar .tools button { flex: 1; }
 	.viewer-bar button { min-height: 40px; padding: 8px 12px; }
 	.stepper button { min-height: 44px; }
 	.check { padding: 6px 0; }

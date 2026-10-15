@@ -130,15 +130,21 @@
 			<section class="viewer">
 				<div class="viewer-bar">
 					<button id="panelToggle" class="icon" type="button" aria-expanded="false" aria-label="설정" title="설정">⚙</button>
-					<button id="prev" type="button">◀</button>
-					<span id="pageLabel">— / —</span>
-					<button id="next" type="button">▶</button>
+					<div class="bar-group pager">
+						<button id="prev" type="button">◀</button>
+						<span id="pageLabel">— / —</span>
+						<button id="next" type="button">▶</button>
+					</div>
 					<span class="peek-hint">악보를 길게 누르면 원본이 보입니다</span>
 					<span class="spacer"></span>
-					<button id="pickRegion" type="button" aria-pressed="false">코드 직접 잡기</button>
-					<button id="addText" type="button" aria-pressed="false">글자 넣기</button>
-					<button id="zoomOut" class="icon" type="button" aria-label="축소" title="축소">−</button>
-					<button id="zoomIn" class="icon" type="button" aria-label="확대" title="확대">＋</button>
+					<div class="bar-group tools">
+						<button id="pickRegion" type="button" aria-pressed="false">코드 직접 잡기</button>
+						<button id="addText" type="button" aria-pressed="false">글자 넣기</button>
+					</div>
+					<div class="bar-group zoom">
+						<button id="zoomOut" class="icon" type="button" aria-label="축소" title="축소">−</button>
+						<button id="zoomIn" class="icon" type="button" aria-label="확대" title="확대">＋</button>
+					</div>
 				</div>
 				<p id="pickHint" class="pick-hint" hidden>
 					코드 위를 드래그해서 네모를 그리세요. 글자가 읽히면 바로 잡고, 스캔본처럼 글자가 없으면 직접 입력받습니다.
