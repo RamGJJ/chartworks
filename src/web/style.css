@@ -40,6 +40,8 @@ body {
 
 .hint { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .hint strong { color: var(--text); }
+.hint a { color: var(--accent); text-decoration: none; }
+.hint a:hover { text-decoration: underline; }
 
 main {
 	display: grid;
