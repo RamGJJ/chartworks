@@ -150,11 +150,16 @@
 					코드 위를 드래그해서 네모를 그리세요. 글자가 읽히면 바로 잡고, 스캔본처럼 글자가 없으면 직접 입력받습니다.
 				</p>
 				<div id="textBar" class="option-bar" hidden>
+					<label id="noteTextRow" class="grow" hidden>
+						<span>글자</span>
+						<input id="noteText" type="text" autocomplete="off" placeholder="예: 2번만 반복" />
+					</label>
 					<label>
-						<span>글자 크기</span>
+						<span>크기</span>
 						<input id="noteSize" type="number" min="4" max="48" step="0.5" />
 						<span class="unit">pt</span>
 					</label>
+					<button id="noteDelete" type="button" hidden>삭제</button>
 					<span class="note">글자를 넣을 자리를 누르세요. 넣은 글자는 끌어서 옮기고, 눌러서 고칩니다.</span>
 				</div>
 				<div id="stage" class="stage">

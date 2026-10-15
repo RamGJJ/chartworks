@@ -337,7 +337,8 @@ button[aria-pressed="true"] {
 	rx: 3;
 }
 
-.notes-layer .note:hover .note-hit {
+.notes-layer .note:hover .note-hit,
+.notes-layer .note.on .note-hit {
 	fill: rgba(106, 168, 255, 0.16);
 	stroke: var(--accent);
 }
@@ -497,6 +498,19 @@ button.icon {
 }
 
 .option-bar label { display: flex; align-items: center; gap: 6px; }
+.option-bar .grow { flex: 1 1 180px; min-width: 120px; }
+.option-bar input[type="text"] {
+	flex: 1;
+	min-width: 0;
+	font: inherit;
+	font-size: 13px;
+	color: var(--text);
+	background: var(--panel-2);
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	padding: 5px 8px;
+}
+.option-bar button { padding: 5px 11px; font-size: 12px; }
 .option-bar input[type="number"] {
 	width: 68px;
 	font: inherit;
@@ -513,9 +527,12 @@ button.icon {
 .chord-input input.wide { width: 150px; }
 
 @media (max-width: 767px) {
-	.option-bar { padding: 8px 10px; }
+	.option-bar { padding: 8px 10px; gap: 8px; flex-wrap: wrap; }
 	.option-bar .note { display: none; }
-	.option-bar input[type="number"] { min-height: 38px; }
+	.option-bar .grow { flex: 1 0 100%; }
+	.option-bar input[type="number"],
+	.option-bar input[type="text"] { min-height: 38px; }
+	.option-bar button { min-height: 38px; padding: 8px 12px; }
 	.chord-input { padding: 6px; gap: 5px; }
 	.chord-input input.wide { width: 130px; }
 	.chord-input button.icon { min-width: 42px; min-height: 42px; }

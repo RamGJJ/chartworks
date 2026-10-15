@@ -41,6 +41,7 @@ const state = {
 	texting: false,
 	noteSize: null,
 	editing: null,
+	viewport: null,
 	painted: null,
 	renderTask: null,
 	outDir: null,
@@ -317,6 +318,7 @@ async function renderPage() {
 	wrap.append(canvas);
 
 	const cssViewport = page.getViewport({ scale: state.zoom });
+	state.viewport = cssViewport;
 
 	const plan = currentPlan(doc);
 	const here = plan.edits.filter((edit) => edit.pageIndex === state.pageIndex);
@@ -348,9 +350,12 @@ async function renderPage() {
 	else if (state.texting) attachTextPlacer(wrap, doc, cssViewport);
 	else attachPeek(wrap);
 
+	attachDeselect(wrap);
+
 	stage.innerHTML = '';
 	stage.append(wrap);
 	sizeNoteHits(wrap);
+	rebindSelection(wrap, cssViewport);
 }
 
 function fretMark(fret, viewport) {
@@ -782,9 +787,11 @@ function attachTextPlacer(wrap, doc, viewport) {
 				wrap,
 				css,
 				'',
-				(text) => {
-					addNote(doc.analysis, { pageIndex: state.pageIndex, text, x, baseline, size: noteSize(doc) });
-					renderPage();
+				async (text) => {
+					const note = addNote(doc.analysis, { pageIndex: state.pageIndex, text, x, baseline, size: noteSize(doc) });
+					setMode(null);
+					await renderPage();
+					if (note) selectNoteById(doc, note.id);
 				},
 				() => {},
 			);
@@ -814,6 +821,7 @@ function notesLayer(doc, notes, viewport) {
 	for (const note of notes) {
 		const group = document.createElementNS(SVG_NS, 'g');
 		group.setAttribute('class', 'note');
+		group.dataset.id = note.id;
 
 		const hit = document.createElementNS(SVG_NS, 'rect');
 		hit.setAttribute('class', 'note-hit');
@@ -893,30 +901,7 @@ function attachNoteDrag(group, doc, note, viewport) {
 }
 
 function editNote(doc, note, anchor, viewport) {
-	const wrap = anchor.closest('.page-wrap');
-	const box = wrap.getBoundingClientRect();
-	const spot = anchor.getBoundingClientRect();
-	const css = { left: spot.left - box.left, top: spot.bottom - box.top };
-
-	// The size lives in the bar at the top while this note is being edited,
-	// the way a drawing program shows the selected object's properties.
 	selectNote(doc, note, anchor, viewport);
-
-	askForText(
-		wrap,
-		css,
-		note.text,
-		(text) => {
-			updateNote(doc.analysis, note.id, { text });
-			selectNote(doc, null);
-			renderPage();
-		},
-		() => {
-			removeNote(doc.analysis, note.id);
-			selectNote(doc, null);
-			renderPage();
-		},
-	);
 }
 
 function noteSize(doc) {
@@ -925,16 +910,65 @@ function noteSize(doc) {
 }
 
 function selectNote(doc, note, group = null, viewport = null) {
+	const bar = $('textBar');
+	const was = bar.getBoundingClientRect().height;
+
 	state.editing = note ? { note, group, viewport } : null;
-	$('textBar').hidden = !state.texting && !note;
+	bar.hidden = !state.texting && !note;
+	$('noteTextRow').hidden = !note;
+	$('noteDelete').hidden = !note;
+	bar.querySelector('.note').hidden = !!note;
+	$('noteText').value = note ? note.text : '';
 	$('noteSize').value = String(Math.round((note ? note.size : noteSize(doc)) * 10) / 10);
+
+	const stage = $('stage');
+	stage.scrollTop = Math.max(0, stage.scrollTop + bar.getBoundingClientRect().height - was);
+
+	for (const marked of document.querySelectorAll('.notes-layer .note.on')) marked.classList.remove('on');
+	group?.classList.add('on');
 }
 
-// Redrawing the page would take the open prompt with it, so the one note being
+function setMode(mode) {
+	state.picking = mode === 'pick';
+	state.texting = mode === 'text';
+	$('pickRegion').setAttribute('aria-pressed', String(state.picking));
+	$('addText').setAttribute('aria-pressed', String(state.texting));
+	$('pickHint').hidden = !state.picking;
+	selectNote(active(), null);
+	renderPage();
+}
+
+function rebindSelection(wrap, viewport) {
+	if (!state.editing) return;
+	const group = wrap.querySelector(`.notes-layer .note[data-id="${state.editing.note.id}"]`);
+	if (!group) {
+		selectNote(active(), null);
+		return;
+	}
+	state.editing.group = group;
+	state.editing.viewport = viewport;
+	group.classList.add('on');
+}
+
+function selectNoteById(doc, id) {
+	const note = doc.analysis.notes.find((one) => one.id === id);
+	const group = document.querySelector(`.notes-layer .note[data-id="${id}"]`);
+	if (note && group) selectNote(doc, note, group, state.viewport);
+}
+
+function attachDeselect(wrap) {
+	wrap.addEventListener('pointerdown', (down) => {
+		if (!state.editing || down.target.closest('.notes-layer') || onPrompt(down)) return;
+		selectNote(active(), null);
+	});
+}
+
+// Redrawing the page would take the focus out of the bar, so the one note being
 // edited is restyled where it stands.
 function restyleNote({ note, group, viewport }) {
 	if (!group || !viewport) return;
-	group.querySelector('text')?.setAttribute('font-size', note.size * state.zoom);
+	const label = group.querySelector('text');
+	if (label) label.textContent = note.text;
 	place(group, note, viewport);
 	sizeNoteHits(group.closest('.page-wrap'));
 }
@@ -1228,17 +1262,6 @@ function wire() {
 		state.pageIndex++;
 		renderPage();
 	});
-	const setMode = (mode) => {
-		state.picking = mode === 'pick';
-		state.texting = mode === 'text';
-		$('pickRegion').setAttribute('aria-pressed', String(state.picking));
-		$('addText').setAttribute('aria-pressed', String(state.texting));
-		$('pickHint').hidden = !state.picking;
-		state.editing = null;
-		$('textBar').hidden = !state.texting;
-		if (state.texting) $('noteSize').value = String(Math.round(noteSize(active() ?? {}) * 10) / 10);
-		renderPage();
-	};
 
 	$('noteSize').addEventListener('change', (e) => {
 		const value = Math.max(4, Math.min(48, Number(e.target.value) || 9));
@@ -1250,6 +1273,25 @@ function wire() {
 		} else {
 			state.noteSize = value;
 		}
+	});
+
+	$('noteText').addEventListener('input', (e) => {
+		const doc = active();
+		const text = e.target.value.trim();
+		if (!state.editing || !doc || !text) return;
+		updateNote(doc.analysis, state.editing.note.id, { text });
+		restyleNote(state.editing);
+	});
+	$('noteText').addEventListener('keydown', (e) => {
+		if (e.key === 'Enter') e.target.blur();
+		if (e.key === 'Escape') selectNote(active(), null);
+	});
+	$('noteDelete').addEventListener('click', () => {
+		const doc = active();
+		if (!state.editing || !doc) return;
+		removeNote(doc.analysis, state.editing.note.id);
+		selectNote(doc, null);
+		renderPage();
 	});
 
 	$('linked').addEventListener('change', (e) => {
