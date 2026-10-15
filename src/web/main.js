@@ -327,6 +327,7 @@ async function renderPage() {
 
 	if (state.picking) attachPicker(wrap, doc, page, cssViewport);
 	else if (state.texting) attachTextPlacer(wrap, doc, cssViewport);
+	else attachPeek(wrap);
 
 	stage.innerHTML = '';
 	stage.append(wrap);
@@ -496,6 +497,38 @@ function markFor(doc, edit, viewport) {
 }
 
 const MIN_DRAG = 6;
+const PEEK_HOLD = 180;
+
+// With the result painted over the sheet there is no way to see what was
+// printed. Holding the button lifts everything this tool drew, for as long as
+// the button is down.
+function attachPeek(wrap) {
+	wrap.addEventListener('mousedown', (down) => {
+		if (down.button !== 0) return;
+
+		const startedAt = Date.now();
+		wrap.classList.add('peeking');
+
+		const release = () => {
+			window.removeEventListener('mouseup', release);
+			window.removeEventListener('blur', release);
+			wrap.classList.remove('peeking');
+
+			// A hold is not a click: without this, peeking over a chord would
+			// also skip it, and peeking over a note would open its editor.
+			if (Date.now() - startedAt < PEEK_HOLD) return;
+			const swallow = (click) => {
+				click.stopPropagation();
+				click.preventDefault();
+			};
+			wrap.addEventListener('click', swallow, { capture: true, once: true });
+			setTimeout(() => wrap.removeEventListener('click', swallow, { capture: true }), 0);
+		};
+
+		window.addEventListener('mouseup', release);
+		window.addEventListener('blur', release);
+	});
+}
 
 function attachPicker(wrap, doc, page, viewport) {
 	wrap.addEventListener('mousedown', (down) => {

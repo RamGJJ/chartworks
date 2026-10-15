@@ -361,3 +361,18 @@ button[aria-pressed="true"] {
 	border-color: rgba(255, 140, 120, 0.95);
 	background: rgba(255, 140, 120, 0.28);
 }
+
+.page-wrap.peeking .ghost-layer,
+.page-wrap.peeking .notes-layer { display: none; }
+
+.page-wrap.peeking .mark,
+.page-wrap.peeking .fret {
+	background: transparent;
+	border-style: dotted;
+}
+
+.viewer-bar .peek-hint {
+	color: var(--muted);
+	font-size: 11px;
+	margin-left: 4px;
+}
