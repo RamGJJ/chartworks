@@ -793,24 +793,30 @@ function pickStaff(wrap, doc, tabPage, viewport, css) {
 	const here = (tabPage?.frets ?? []).filter((f) => f.x + f.width > area.x0 && f.x < area.x1);
 
 	const rows = staff.lines
-		.map((lineY, string) => ({
-			string,
-			label: `${staff.lines.length - string}번 줄`,
-			over:
+		.map((lineY, string) => {
+			const over =
 				here
 					.filter((f) => Math.abs(f.lineY - lineY) < 0.6)
 					.sort(
 						(a, b) =>
 							Math.abs(a.x + a.width / 2 - centre) - Math.abs(b.x + b.width / 2 - centre),
-					)[0] ?? null,
-		}))
+					)[0] ?? null;
+			const to = over ? over.value + state.fretShift : null;
+			return {
+				string,
+				label: `${staff.lines.length - string}번 줄`,
+				over,
+				initial: to === null ? '' : String(to),
+				stuck: to !== null && (to < 0 || to > state.maxFret),
+			};
+		})
 		.reverse();
 
 	askForFrets(wrap, css, rows, (values) => {
 		let written = 0;
 		for (const row of rows) {
 			const raw = values[row.string];
-			if (!raw || (row.over && Number(raw) === row.over.value)) continue;
+			if (!raw) continue;
 			const fret = placeFret({
 				staff,
 				string: row.string,
@@ -846,22 +852,26 @@ function askForFrets(wrap, css, rows, onDone) {
 		input.type = 'text';
 		input.inputMode = 'numeric';
 		input.autocomplete = 'off';
-		input.maxLength = 2;
-		input.value = row.over ? String(row.over.value) : '';
-		input.addEventListener('input', () => input.classList.remove('bad'));
+		input.maxLength = 3;
+		input.value = row.initial;
+		input.addEventListener('input', () => {
+			input.classList.remove('bad');
+			line.classList.toggle('stuck', row.stuck && input.value.trim() === row.initial);
+		});
 
+		if (row.stuck) line.classList.add('stuck');
 		line.append(name, input);
 		panel.append(line);
-		fields.set(row.string, input);
+		fields.set(row.string, { input, initial: row.initial });
 	}
 
 	const close = () => panel.remove();
 	const submit = () => {
 		const values = {};
 		let bad = false;
-		for (const [string, input] of fields) {
+		for (const [string, { input, initial }] of fields) {
 			const raw = input.value.trim();
-			if (!raw) continue;
+			if (!raw || raw === initial) continue;
 			if (!/^\d{1,2}$/.test(raw) || Number(raw) > state.maxFret) {
 				input.classList.add('bad');
 				bad = true;
@@ -889,7 +899,9 @@ function askForFrets(wrap, css, rows, onDone) {
 
 	wrap.append(panel);
 	placePrompt(panel, wrap, { left: css.right + 8, top: css.top });
-	fields.values().next().value?.focus();
+	const first = [...fields.values()].find((one) => one.input.closest('.stuck')) ?? fields.values().next().value;
+	first?.input.focus();
+	first?.input.select();
 }
 
 async function pickRegion(wrap, doc, page, viewport, css) {

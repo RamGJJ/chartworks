@@ -374,6 +374,8 @@ button[aria-pressed="true"] {
 }
 
 .fret-row input.bad { border-color: var(--warn); }
+.fret-row.stuck { color: var(--warn); }
+.fret-row.stuck input { border-color: rgba(255, 140, 120, 0.8); color: var(--warn); }
 .fret-foot { display: flex; justify-content: flex-end; gap: 5px; margin-top: 2px; }
 
 .row input[type="number"] {
