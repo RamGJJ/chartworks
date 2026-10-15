@@ -282,6 +282,11 @@ async function paintPage(doc, page, token) {
 async function renderPage() {
 	const stage = $('stage');
 	const doc = active();
+
+	// Redrawing rebuilds the page and everything on it, the open prompt
+	// included. Whatever asked for the redraw can wait until it is answered.
+	if (doc && stage.querySelector('.chord-input')) return;
+
 	const token = ++state.renderToken;
 
 	if (!doc) {
@@ -1168,8 +1173,14 @@ function wire() {
 		renderPage();
 	});
 
+	// Only the width decides the fit, and only the width is worth redrawing for.
+	// On a phone the on-screen keyboard fires resize on every focus, and
+	// redrawing then would wipe out the very prompt that raised it.
+	let lastWidth = window.innerWidth;
 	let resizing = null;
 	window.addEventListener('resize', () => {
+		if (window.innerWidth === lastWidth) return;
+		lastWidth = window.innerWidth;
 		clearTimeout(resizing);
 		resizing = setTimeout(() => state.fitWidth && renderPage(), 200);
 	});
