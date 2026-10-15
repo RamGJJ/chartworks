@@ -13,6 +13,10 @@
 
 * { box-sizing: border-box; }
 
+/* A class that sets display beats the browser's own [hidden] rule, and these
+   bars all set one. Say it once here instead of in each of them. */
+[hidden] { display: none !important; }
+
 body {
 	margin: 0;
 	background: var(--bg);
@@ -513,4 +517,26 @@ button.icon {
 	.chord-input { padding: 6px; gap: 5px; }
 	.chord-input input.wide { width: 130px; }
 	.chord-input button.icon { min-width: 42px; min-height: 42px; }
+}
+
+.inapp {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 9px 14px;
+	background: #3a2e12;
+	border-bottom: 1px solid #5b4718;
+	color: #ffe9b8;
+	font-size: 12px;
+}
+
+.inapp strong { color: #fff; }
+.inapp span { flex: 1; min-width: 0; }
+.inapp button { padding: 6px 10px; font-size: 12px; min-height: 34px; }
+.inapp button.icon { min-width: 34px; }
+
+@media (max-width: 767px) {
+	.inapp { padding: 8px 10px; gap: 6px; flex-wrap: wrap; }
+	.inapp span { flex: 1 0 100%; }
 }

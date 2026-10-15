@@ -292,7 +292,8 @@ async function renderPage() {
 	const token = ++state.renderToken;
 
 	if (!doc) {
-		stage.innerHTML = '<p class="empty">왼쪽에서 PDF를 열어 주세요.</p>';
+		const drawer = getComputedStyle($('panelToggle')).display !== 'none';
+		stage.innerHTML = `<p class="empty">${drawer ? '⚙ 를 눌러' : '왼쪽에서'} PDF를 열어 주세요.</p>`;
 		$('pageLabel').textContent = '— / —';
 		return;
 	}
@@ -1020,6 +1021,24 @@ function outputName(doc) {
 	return marks ? `${base} [${marks}].pdf` : `${base} [메모].pdf`;
 }
 
+// An in-app browser — the one a KakaoTalk link opens in — usually refuses a
+// blob download, and the file lands nowhere. The share sheet goes through, and
+// on a phone it is the better route anyway: it can hand the sheet straight back
+// to a chat, or save it to Files.
+async function shareFiles(saved) {
+	if (!navigator.canShare || !navigator.share) return false;
+	const files = saved.map(({ name, bytes }) => new File([bytes], name, { type: 'application/pdf' }));
+	if (!navigator.canShare({ files })) return false;
+
+	try {
+		await navigator.share({ files, title: files.length === 1 ? files[0].name : '악보' });
+		return true;
+	} catch (err) {
+		// A cancelled sheet is a decision, not a failure.
+		return err?.name === 'AbortError';
+	}
+}
+
 function download(bytes, name) {
 	const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
 	const a = document.createElement('a');
@@ -1034,6 +1053,7 @@ async function saveAll() {
 	$('save').disabled = true;
 	let done = 0;
 	let skipped = 0;
+	const saved = [];
 
 	for (const doc of state.docs) {
 		const shift = currentShift(doc);
@@ -1056,7 +1076,7 @@ async function saveAll() {
 				await stream.write(result.bytes);
 				await stream.close();
 			} else {
-				download(result.bytes, name);
+				saved.push({ name, bytes: result.bytes });
 			}
 			done++;
 		} catch (err) {
@@ -1065,8 +1085,15 @@ async function saveAll() {
 		}
 	}
 
+	// Hand everything over at once: one sheet beats one per sheet of music.
+	let how = '';
+	if (saved.length) {
+		if (!window.showDirectoryPicker && (await shareFiles(saved))) how = ' (공유)';
+		else for (const one of saved) download(one.bytes, one.name);
+	}
+
 	$('save').disabled = false;
-	setStatus(`${done}개 저장 완료${skipped ? `, ${skipped}개는 고칠 것이 없어 건너뜀` : ''}`, 'ok');
+	setStatus(`${done}개 저장 완료${how}${skipped ? `, ${skipped}개는 고칠 것이 없어 건너뜀` : ''}`, 'ok');
 }
 
 const steps = (value) => Math.max(-11, Math.min(11, Math.round(value)));
@@ -1102,6 +1129,39 @@ function setFretShift(value) {
 	showFretShift(value);
 	if (state.linked) showSemitones(state.fretShift);
 	refreshShift();
+}
+
+// Nothing a page can do will reliably force an external browser; these are the
+// escape hatches each app happens to honour, and they change with every OS
+// release. Copying the address is the one that always works.
+const IN_APP = /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\//i;
+
+function offerEscape() {
+	if (!IN_APP.test(navigator.userAgent)) return;
+	$('inapp').hidden = false;
+
+	$('inappOpen').addEventListener('click', () => {
+		const here = location.href;
+		if (/android/i.test(navigator.userAgent)) {
+			const bare = here.replace(/^https?:\/\//, '');
+			location.href = `intent://${bare}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(here)};end`;
+			return;
+		}
+		location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(here)}`;
+	});
+
+	$('inappCopy').addEventListener('click', async () => {
+		try {
+			await navigator.clipboard.writeText(location.href);
+			setStatus('주소를 복사했습니다. 브라우저에 붙여넣어 주세요.', 'ok');
+		} catch {
+			setStatus(location.href, '');
+		}
+	});
+
+	$('inappHide').addEventListener('click', () => {
+		$('inapp').hidden = true;
+	});
 }
 
 function wire() {
@@ -1248,6 +1308,7 @@ function wire() {
 	});
 
 	$('save').addEventListener('click', saveAll);
+	offerEscape();
 	setSemitones(0);
 }
 
