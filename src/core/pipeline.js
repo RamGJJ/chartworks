@@ -45,6 +45,7 @@ export function analyze(pages) {
 		pages: analyzed,
 		notes: [],
 		tabFrets: [],
+		tabErased: [],
 		chordFonts,
 		key,
 		keyLabel: key ? keyName(key.pc, key.minor) : null,
@@ -124,6 +125,25 @@ export function updateTabFret(analysis, id, patch) {
 		if (patch[key] !== undefined) fret[key] = patch[key];
 	}
 	return fret;
+}
+
+let eraseCounter = 0;
+
+export function eraseTabFret(analysis, { pageIndex, ...fret }) {
+	if (!analysis.pages[pageIndex]) return null;
+	if (analysis.tabErased.some((one) => one.pageIndex === pageIndex && sameSpot(one, { ...fret, pageIndex }))) {
+		return null;
+	}
+
+	const gone = { ...fret, pageIndex, id: `erase-${++eraseCounter}` };
+	analysis.tabErased.push(gone);
+	return gone;
+}
+
+export function restoreTabFret(analysis, id) {
+	const before = analysis.tabErased.length;
+	analysis.tabErased = analysis.tabErased.filter((one) => one.id !== id);
+	return analysis.tabErased.length !== before;
 }
 
 export function removeTabFret(analysis, id) {

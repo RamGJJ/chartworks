@@ -382,6 +382,20 @@ export function fretTemplate(staff, frets) {
 	};
 }
 
+export function lineAt(staves, { x, y }) {
+	for (const staff of staves) {
+		if (x < staff.x0 - 2 || x > staff.x1 + 2) continue;
+		if (y < staff.lines[0] - staff.step || y > staff.lines.at(-1) + staff.step) continue;
+
+		let string = 0;
+		for (let i = 1; i < staff.lines.length; i++) {
+			if (Math.abs(staff.lines[i] - y) < Math.abs(staff.lines[string] - y)) string = i;
+		}
+		return { staff, string };
+	}
+	return null;
+}
+
 export function placeFret({ staff, string, value, centre, template, over = null }) {
 	const digits = over ? over.digits : String(value).length;
 	const width = over ? over.width : template.unit * digits;
@@ -442,10 +456,15 @@ export function describeShift(frets, semitones, { maxFret = DEFAULT_MAX_FRET } =
 	});
 }
 
-export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET, manual = [] } = {}) {
+export function planFretShift(
+	pages,
+	semitones,
+	{ maxFret = DEFAULT_MAX_FRET, manual = [], erased = [] } = {},
+) {
 	const moves = [];
 	const blocked = [];
 	const byHand = (index) => manual.filter((one) => one.pageIndex === index).map(asMove);
+	const rubbed = (index) => erased.filter((one) => one.pageIndex === index);
 
 	if (pages.some((page) => page.alreadyShifted)) {
 		return {
@@ -453,6 +472,7 @@ export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET, ma
 			maxFret,
 			moves: pages.flatMap((page) => byHand(page.index)),
 			blocked: [],
+			erasures: erased,
 			feasible: false,
 			alreadyShifted: true,
 			total: pages.reduce((n, p) => n + p.frets.length, 0),
@@ -461,10 +481,12 @@ export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET, ma
 
 	for (const page of pages) {
 		const mine = byHand(page.index);
+		const gone = rubbed(page.index);
 		moves.push(...mine);
 		if (!semitones) continue;
 
-		for (const move of describeShift(withoutCovered(page.frets, mine), semitones, { maxFret })) {
+		const left = withoutCovered(page.frets, [...mine, ...gone]);
+		for (const move of describeShift(left, semitones, { maxFret })) {
 			const placed = { ...move, pageIndex: page.index };
 			if (placed.ok) moves.push(placed);
 			else blocked.push(placed);
@@ -479,6 +501,7 @@ export function planFretShift(pages, semitones, { maxFret = DEFAULT_MAX_FRET, ma
 		maxFret,
 		moves,
 		blocked,
+		erasures: erased,
 		feasible: blocked.length === 0,
 		alreadyShifted: false,
 		total: moves.length + blocked.length,

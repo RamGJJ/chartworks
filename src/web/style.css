@@ -418,6 +418,15 @@ button[aria-pressed="true"] {
 
 .fret.hand:active { cursor: grabbing; }
 
+.fret.rubbed {
+	border-style: dashed;
+	border-color: rgba(154, 161, 181, 0.9);
+	background: rgba(154, 161, 181, 0.14);
+	cursor: pointer;
+}
+
+.fret.live { cursor: pointer; }
+
 .page-wrap.peeking .ghost-layer,
 .page-wrap.peeking .notes-layer { display: none; }
 

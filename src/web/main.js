@@ -5,12 +5,14 @@ import {
 	addManualChord,
 	addNote,
 	addTabFret,
+	eraseTabFret,
 	analyze,
 	buildPlan,
 	extractPages,
 	removeManualChord,
 	removeNote,
 	removeTabFret,
+	restoreTabFret,
 	targetKeyLabel,
 	updateNote,
 	updateTabFret,
@@ -21,6 +23,7 @@ import {
 	asMove,
 	describeShift,
 	fretTemplate,
+	lineAt,
 	placeFret,
 	planFretShift,
 	readTabPage,
@@ -172,11 +175,22 @@ function currentShift(doc) {
 	return planFretShift(doc.tab, state.fretShift, {
 		maxFret: state.maxFret,
 		manual: doc.analysis.tabFrets,
+		erased: doc.analysis.tabErased,
 	});
 }
 
 function manualFretsOn(doc, pageIndex) {
 	return doc.analysis.tabFrets.filter((one) => one.pageIndex === pageIndex);
+}
+
+function erasedFretsOn(doc, pageIndex) {
+	return doc.analysis.tabErased.filter((one) => one.pageIndex === pageIndex);
+}
+
+function staffOfFret(tabPage, fret) {
+	return (tabPage?.allStaves ?? []).find((one) =>
+		one.lines.some((y) => Math.abs(y - fret.lineY) < 0.6),
+	) ?? null;
 }
 
 function syncTabLine() {
@@ -191,7 +205,9 @@ function syncTabLine() {
 
 	const frets = doc.tab.flatMap((page) => page.frets);
 	const byHand = doc.analysis.tabFrets.length;
-	const hand = byHand ? ` · 직접 적음 ${byHand}개` : '';
+	const gone = doc.analysis.tabErased.length;
+	const hand =
+		(byHand ? ` · 직접 적음 ${byHand}개` : '') + (gone ? ` · 지움 ${gone}개` : '');
 	const shape = summarise(frets);
 	if (!shape) {
 		const staves = doc.tab.reduce((n, page) => n + (page.allStaves?.length ?? 0), 0);
@@ -351,9 +367,9 @@ async function renderPage() {
 	const here = plan.edits.filter((edit) => edit.pageIndex === state.pageIndex);
 	const tabPage = doc.tab.find((p) => p.index === state.pageIndex);
 	const byHand = manualFretsOn(doc, state.pageIndex).map(asMove);
-	const frets = describeShift(withoutCovered(tabPage?.frets ?? [], byHand), state.fretShift, {
-		maxFret: state.maxFret,
-	});
+	const erased = erasedFretsOn(doc, state.pageIndex);
+	const standing = withoutCovered(tabPage?.frets ?? [], [...byHand, ...erased]);
+	const frets = describeShift(standing, state.fretShift, { maxFret: state.maxFret });
 
 	// What the saved PDF will carry, drawn where it will sit, so the sheet on
 	// screen is the sheet that comes out.
@@ -361,7 +377,11 @@ async function renderPage() {
 		...(state.showBoxes ? here.filter((edit) => edit.changed) : []),
 	];
 	const movingFrets = state.showFrets
-		? [...(state.fretShift ? frets.filter((f) => f.ok) : []), ...byHand]
+		? [
+			...erased.map((gone) => ({ ...gone, to: '', digits: gone.digits || 1 })),
+			...(state.fretShift ? frets.filter((f) => f.ok) : []),
+			...byHand,
+		]
 		: [];
 	if (ghosts.length || movingFrets.length) {
 		wrap.append(ghostLayer(ghosts, movingFrets, cssViewport, previewFont(doc)));
@@ -372,8 +392,9 @@ async function renderPage() {
 	}
 
 	if (state.showFrets) {
-		for (const fret of frets) wrap.append(fretMark(fret, cssViewport));
+		for (const fret of frets) wrap.append(fretMark(fret, cssViewport, doc, tabPage));
 		for (const fret of byHand) wrap.append(handFretMark(doc, fret, cssViewport));
+		for (const gone of erased) wrap.append(erasedMark(doc, gone, cssViewport));
 	}
 
 	const notes = doc.analysis.notes.filter((note) => note.pageIndex === state.pageIndex);
@@ -415,6 +436,7 @@ function handFretMark(doc, fret, viewport) {
 	const tip = document.createElement('span');
 	tip.className = 'tip';
 	tip.textContent = `직접 적음 · ${stringLabel(fret)} ${fret.value}프렛 (끌어서 옮기고, 눌러서 고칩니다)`;
+	el.dataset.hand = fret.id;
 	el.append(tip);
 
 	attachHandFretDrag(el, doc, fret, viewport);
@@ -503,15 +525,79 @@ function editHandFret(el, doc, fret) {
 		{
 			placeholder: '프렛',
 			numeric: true,
+			remove: '빼기',
 			validate: (text) => /^\d{1,2}$/.test(text) && Number(text) <= state.maxFret,
+			onCancel: () => {},
 		},
 	);
 }
 
-function fretMark(fret, viewport) {
+function erasedMark(doc, gone, viewport) {
+	const el = fretBox(gone, viewport);
+	el.className = 'fret rubbed';
+
+	const tip = document.createElement('span');
+	tip.className = 'tip';
+	tip.textContent = `지움 · ${stringLabel(gone)} ${gone.value}프렛 (눌러서 되돌리기)`;
+	el.append(tip);
+
+	el.addEventListener('click', () => {
+		restoreTabFret(doc.analysis, gone.id);
+		syncTabLine();
+		renderPage();
+	});
+	return el;
+}
+
+function editPrinted(el, doc, tabPage, fret) {
+	const wrap = el.closest('.page-wrap');
+	const box = wrap.getBoundingClientRect();
+	const spot = el.getBoundingClientRect();
+	const css = { left: spot.left - box.left, top: spot.bottom - box.top };
+	const staff = staffOfFret(tabPage, fret);
+
+	askForText(
+		wrap,
+		css,
+		String(fret.to),
+		(text) => {
+			if (!staff) return;
+			const written = placeFret({
+				staff,
+				string: fret.string,
+				value: Number(text),
+				centre: fret.x + fret.width / 2,
+				template: fretTemplate(staff, tabPage?.frets ?? []),
+				over: fret,
+			});
+			addTabFret(doc.analysis, { pageIndex: state.pageIndex, ...written });
+			syncTabLine();
+			renderPage();
+		},
+		() => {
+			eraseTabFret(doc.analysis, { pageIndex: state.pageIndex, ...fret });
+			setStatus(`${stringLabel(fret)} ${fret.from}프렛을 지웠습니다`, 'ok');
+			syncTabLine();
+			renderPage();
+		},
+		{
+			placeholder: '프렛',
+			numeric: true,
+			remove: '지우기',
+			validate: (text) => /^\d{1,2}$/.test(text) && Number(text) <= state.maxFret,
+			onCancel: () => {},
+		},
+	);
+}
+
+function fretMark(fret, viewport, doc, tabPage) {
 	const el = fretBox(fret, viewport);
 	const moving = state.fretShift !== 0;
 	el.className = `fret${moving ? (fret.ok ? ' moved' : ' stuck') : ''}`;
+	if (state.fretting) {
+		el.classList.add('live');
+		el.addEventListener('click', () => editPrinted(el, doc, tabPage, fret));
+	}
 
 	const tip = document.createElement('span');
 	tip.className = 'tip';
@@ -720,7 +806,7 @@ function capture(element, pointerId) {
 	}
 }
 
-function dragBand(wrap, down, onDone) {
+function dragBand(wrap, down, onDone, onTap) {
 	down.preventDefault();
 	capture(wrap, down.pointerId);
 
@@ -746,7 +832,10 @@ function dragBand(wrap, down, onDone) {
 		const end = draw(up);
 		band.remove();
 
-		if (Math.abs(end.x - start.x) < MIN_DRAG || Math.abs(end.y - start.y) < MIN_DRAG) return;
+		if (Math.abs(end.x - start.x) < MIN_DRAG || Math.abs(end.y - start.y) < MIN_DRAG) {
+			if (onTap && Math.hypot(end.x - start.x, end.y - start.y) <= TAP_SLOP) onTap(start);
+			return;
+		}
 		onDone({
 			left: Math.min(start.x, end.x),
 			right: Math.max(start.x, end.x),
@@ -776,8 +865,49 @@ function attachPicker(wrap, doc, page, viewport) {
 function attachFretPicker(wrap, doc, tabPage, viewport) {
 	wrap.addEventListener('pointerdown', (down) => {
 		if (down.button !== 0 || onPrompt(down) || down.target.closest('.fret')) return;
-		dragBand(wrap, down, (css) => pickStaff(wrap, doc, tabPage, viewport, css));
+		dragBand(
+			wrap,
+			down,
+			(css) => pickStaff(wrap, doc, tabPage, viewport, css),
+			(at) => addFretAt(wrap, doc, tabPage, viewport, at),
+		);
 	});
+}
+
+function addFretAt(wrap, doc, tabPage, viewport, at) {
+	const [x, y] = viewport.convertToPdfPoint(at.x, at.y);
+	const spot = lineAt(tabPage?.allStaves ?? [], { x, y });
+	if (!spot) {
+		setStatus('탭 보표 위를 눌러 주세요. 숫자를 누르면 고치거나 지웁니다.', 'err');
+		return;
+	}
+
+	const label = `${spot.staff.lines.length - spot.string}번 줄`;
+	askForText(
+		wrap,
+		{ left: at.x, top: at.y },
+		'',
+		(text) => {
+			const written = placeFret({
+				staff: spot.staff,
+				string: spot.string,
+				value: Number(text),
+				centre: x,
+				template: fretTemplate(spot.staff, tabPage?.frets ?? []),
+			});
+			addTabFret(doc.analysis, { pageIndex: state.pageIndex, ...written });
+			setStatus(`${label}에 ${text}프렛을 적었습니다`, 'ok');
+			syncTabLine();
+			renderPage();
+		},
+		() => {},
+		{
+			placeholder: label,
+			numeric: true,
+			validate: (text) => /^\d{1,2}$/.test(text) && Number(text) <= state.maxFret,
+			onCancel: () => {},
+		},
+	);
 }
 
 function pickStaff(wrap, doc, tabPage, viewport, css) {
@@ -1214,7 +1344,7 @@ function selectNote(doc, note, group = null, viewport = null) {
 
 const PICK_HINTS = {
 	pick: '코드 위를 드래그해서 네모를 그리세요. 글자가 읽히면 바로 잡고, 스캔본처럼 글자가 없으면 직접 입력받습니다.',
-	fret: '탭 보표를 가로질러 드래그하세요. 줄마다 적을 번호를 받습니다. 번호가 있던 자리는 덮어쓰고, 빈 자리에는 새로 적습니다.',
+	fret: '숫자를 누르면 고치거나 지웁니다. 빈 자리를 누르면 그 줄에 번호를 적고, 보표를 가로질러 끌면 줄마다 한 번에 받습니다.',
 };
 
 function setMode(mode) {
@@ -1222,7 +1352,7 @@ function setMode(mode) {
 	state.fretting = mode === 'fret';
 	state.texting = mode === 'text';
 	$('pickRegion').setAttribute('aria-pressed', String(state.picking));
-	$('addFret').setAttribute('aria-pressed', String(state.fretting));
+	$('fixTab').setAttribute('aria-pressed', String(state.fretting));
 	$('addText').setAttribute('aria-pressed', String(state.texting));
 	$('pickHint').hidden = !PICK_HINTS[mode];
 	$('pickHint').textContent = PICK_HINTS[mode] ?? '';
@@ -1302,11 +1432,11 @@ function askForText(wrap, css, initial, onDone, onRemove, options = {}) {
 		}
 		if (e.key === 'Escape') {
 			close();
-			onRemove();
+			(options.onCancel ?? onRemove)();
 		}
 	});
 
-	panel.append(input, iconButton('✓', '넣기', submit), iconButton('✕', '빼기', () => {
+	panel.append(input, iconButton('✓', '넣기', submit), iconButton('✕', options.remove ?? '빼기', () => {
 		close();
 		onRemove();
 	}));
@@ -1350,6 +1480,7 @@ async function convert(doc) {
 		loadFontBytes,
 		fretMoves: shift.moves,
 		fretStuck: state.fretShift ? shift.blocked : [],
+		fretErased: shift.erasures,
 	});
 }
 
@@ -1361,7 +1492,7 @@ function outputName(doc) {
 	const tag = state.semitones || !state.fretShift ? (to ?? sign) : null;
 	const fret = state.fretShift
 		? `탭${state.fretShift > 0 ? '+' : ''}${state.fretShift}`
-		: doc.analysis.tabFrets.length ? '탭수정' : null;
+		: doc.analysis.tabFrets.length || doc.analysis.tabErased.length ? '탭수정' : null;
 	const marks = [tag, fret].filter(Boolean).join(' ');
 	return marks ? `${base} [${marks}].pdf` : `${base} [메모].pdf`;
 }
@@ -1627,7 +1758,7 @@ function wire() {
 	$('panelClose').addEventListener('click', () => showPanel(false));
 
 	$('pickRegion').addEventListener('click', () => setMode(state.picking ? null : 'pick'));
-	$('addFret').addEventListener('click', () => setMode(state.fretting ? null : 'fret'));
+	$('fixTab').addEventListener('click', () => setMode(state.fretting ? null : 'fret'));
 	$('addText').addEventListener('click', () => setMode(state.texting ? null : 'text'));
 
 	$('zoomIn').addEventListener('click', () => {

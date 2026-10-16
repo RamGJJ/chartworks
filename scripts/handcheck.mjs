@@ -49,10 +49,14 @@ const written = [
 	},
 ];
 
-const plan = planFretShift(tab, 0, { maxFret: 24, manual: written });
+const rub = first.frets.find((f) => f !== over && s4(staff, f));
+const erased = [{ ...rub, pageIndex: first.index, id: 'erase-1' }];
+
+const plan = planFretShift(tab, 0, { maxFret: 24, manual: written, erased });
 const saved = await applyPlan(new Uint8Array(original), { edits: [], notes: [] }, {
 	fretMoves: plan.moves,
 	fretStuck: [],
+	fretErased: plan.erasures,
 });
 fs.mkdirSync(out.replace(/[^/\\]+$/, '') || '.', { recursive: true });
 fs.writeFileSync(out, Buffer.from(saved.bytes));
@@ -78,4 +82,5 @@ const glyphsAt = (one) =>
 console.log(`원본 ${first.frets.length}개 · 덮어쓸 자리 ${over.value}프렛 (${over.string}번 인덱스 줄)`);
 console.log(`쓴 값: 덮어쓰기 9, 빈 자리 13`);
 console.log(`저장본에서 읽은 글자: 덮어쓴 자리 "${glyphsAt(written[0])}", 새 자리 "${glyphsAt(written[1])}"`);
+console.log(`지운 자리: ${rub.value}프렛 → 글자 "${glyphsAt(rub)}" (옛 글자가 흰 사각형 아래 남습니다)`);
 console.log(`저장: ${out}`);

@@ -124,6 +124,8 @@ function drawFret(page, move, font, debug, ink) {
 		borderWidth: 0,
 	});
 
+	if (!text.length) return;
+
 	page.drawRectangle({
 		x: left - 0.2,
 		y: patchY,
@@ -220,9 +222,11 @@ export async function applyPlan(originalBytes, plan, options = {}) {
 	// says which notes were left behind instead of hiding it.
 	const fretMoves = options.fretMoves ?? [];
 	const fretStuck = options.fretStuck ?? [];
-	if (fretMoves.length || fretStuck.length) {
+	const fretErased = options.fretErased ?? [];
+	if (fretMoves.length || fretStuck.length || fretErased.length) {
 		const fretFont = fonts[pickFretFont(fonts, fretMoves.length ? fretMoves : fretStuck)];
 		const jobs = [
+			...fretErased.map((move) => ({ move: { ...move, to: '' }, ink: rgb(0, 0, 0) })),
 			...fretMoves.map((move) => ({ move, ink: rgb(0, 0, 0) })),
 			...fretStuck.map((move) => ({ move: { ...move, to: move.from }, ink: STUCK_INK })),
 		];

@@ -6,6 +6,7 @@ import {
 	describeShift,
 	fretTemplate,
 	groupIntoStaves,
+	lineAt,
 	placeFret,
 	planFretShift,
 	readFrets,
@@ -220,4 +221,50 @@ test('hand written numbers are written out even when nothing is being shifted', 
 		manual: [{ ...written, pageIndex: 0 }],
 	});
 	assert.deepEqual(plan.moves.map((m) => m.to), [3]);
+});
+
+test('a tap finds the line it landed nearest', () => {
+	const staff = groupIntoStaves(guitar)[0];
+	const bottom = lineAt([staff], { x: 200, y: staff.lines[0] + 0.5 });
+	assert.equal(bottom.string, 0);
+
+	const top = lineAt([staff], { x: 200, y: staff.lines.at(-1) - 0.5 });
+	assert.equal(top.string, staff.lines.length - 1);
+
+	assert.equal(lineAt([staff], { x: 900, y: staff.lines[0] }), null);
+	assert.equal(lineAt([staff], { x: 200, y: staff.lines.at(-1) + staff.step * 3 }), null);
+});
+
+test('a number rubbed out leaves the shift and comes back as an erasure', () => {
+	const staff = groupIntoStaves(guitar)[0];
+	const printed = readFrets(
+		[digit('7', 100, 552.1, 3.84), digit('5', 200, 552.1, 3.84)],
+		[staff],
+		[patch(100, 552.2, 3.8), patch(200, 552.2, 3.8)],
+		'fret',
+	);
+	const gone = { ...printed[0], pageIndex: 0, id: 'erase-1' };
+
+	const plan = planFretShift([{ index: 0, frets: printed }], 2, { maxFret: 24, erased: [gone] });
+	assert.deepEqual(plan.moves.map((m) => [m.from, m.to]), [[5, 7]]);
+	assert.equal(plan.blocked.length, 0);
+	assert.deepEqual(plan.erasures.map((one) => one.value), [7]);
+});
+
+test('rubbing out the number that could not move clears the way', () => {
+	const staff = groupIntoStaves(guitar)[0];
+	const printed = readFrets(
+		[digit('0', 100, 552.1, 3.84)],
+		[staff],
+		[patch(100, 552.2, 3.8)],
+		'fret',
+	);
+	const blocked = planFretShift([{ index: 0, frets: printed }], -2, { maxFret: 24 });
+	assert.equal(blocked.feasible, false);
+
+	const gone = { ...printed[0], pageIndex: 0, id: 'erase-1' };
+	const cleared = planFretShift([{ index: 0, frets: printed }], -2, { maxFret: 24, erased: [gone] });
+	assert.equal(cleared.feasible, true);
+	assert.equal(cleared.blocked.length, 0);
+	assert.equal(cleared.erasures.length, 1);
 });
