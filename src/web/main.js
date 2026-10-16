@@ -862,7 +862,61 @@ function attachPicker(wrap, doc, page, viewport) {
 	});
 }
 
+const LANE_SPAN = 150;
+
+function attachStringLane(wrap, tabPage, viewport) {
+	const staves = tabPage?.allStaves ?? [];
+	if (!staves.length) return;
+
+	const lane = document.createElement('div');
+	lane.className = 'string-lane';
+	lane.hidden = true;
+
+	const chip = document.createElement('span');
+	lane.append(chip);
+	wrap.append(lane);
+
+	const follow = (move) => {
+		if (move.pointerType === 'touch' || wrap.querySelector('.band, .chord-input')) {
+			lane.hidden = true;
+			return;
+		}
+
+		const room = wrap.getBoundingClientRect();
+		const cssX = move.clientX - room.left;
+		const [x, y] = viewport.convertToPdfPoint(cssX, move.clientY - room.top);
+		const spot = lineAt(staves, { x, y });
+		if (!spot) {
+			lane.hidden = true;
+			return;
+		}
+
+		const { staff, string } = spot;
+		const lineY = staff.lines[string];
+		const [edgeA, topA] = viewport.convertToViewportPoint(staff.x0, lineY + staff.step * 0.5);
+		const [edgeB, topB] = viewport.convertToViewportPoint(staff.x1, lineY - staff.step * 0.5);
+
+		const lo = Math.min(edgeA, edgeB);
+		const hi = Math.max(edgeA, edgeB);
+		const span = Math.min(LANE_SPAN, hi - lo);
+		const from = Math.max(lo, Math.min(cssX - span / 2, hi - span));
+
+		lane.style.left = `${from}px`;
+		lane.style.width = `${span}px`;
+		lane.style.top = `${Math.min(topA, topB)}px`;
+		lane.style.height = `${Math.max(Math.abs(topB - topA), 4)}px`;
+		chip.textContent = `${staff.lines.length - string}번 줄`;
+		lane.hidden = false;
+	};
+
+	wrap.addEventListener('pointermove', follow);
+	wrap.addEventListener('pointerleave', () => {
+		lane.hidden = true;
+	});
+}
+
 function attachFretPicker(wrap, doc, tabPage, viewport) {
+	attachStringLane(wrap, tabPage, viewport);
 	wrap.addEventListener('pointerdown', (down) => {
 		if (down.button !== 0 || onPrompt(down) || down.target.closest('.fret')) return;
 		dragBand(

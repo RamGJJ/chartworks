@@ -427,6 +427,30 @@ button[aria-pressed="true"] {
 
 .fret.live { cursor: pointer; }
 
+.string-lane {
+	position: absolute;
+	pointer-events: none;
+	border-top: 1px solid rgba(106, 168, 255, 0.7);
+	border-bottom: 1px solid rgba(106, 168, 255, 0.7);
+	background: rgba(106, 168, 255, 0.18);
+}
+
+.string-lane span {
+	position: absolute;
+	left: 0;
+	top: 50%;
+	transform: translate(-100%, -50%);
+	margin-left: -6px;
+	padding: 2px 5px;
+	border-radius: 5px;
+	background: rgba(17, 23, 34, 0.92);
+	border: 1px solid rgba(106, 168, 255, 0.6);
+	color: #dbe6ff;
+	font-size: 10px;
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
 .page-wrap.peeking .ghost-layer,
 .page-wrap.peeking .notes-layer { display: none; }
 
